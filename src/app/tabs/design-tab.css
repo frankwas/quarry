@@ -1,0 +1,200 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.pad {
+  margin: 14px;
+}
+.kw {
+  font: 600 11px var(--mono);
+  color: var(--syn-keyword);
+}
+.schema {
+  color: var(--muted);
+  margin-right: -4px;
+}
+.name {
+  width: 220px;
+  height: 28px;
+}
+.secs {
+  margin-left: 12px;
+}
+.secs .n {
+  font: 10.5px var(--mono);
+  color: var(--muted);
+  margin-left: 3px;
+}
+.secs .n.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  vertical-align: middle;
+}
+.grow {
+  flex: 1;
+}
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.cols {
+  flex: 1;
+  overflow: auto;
+  min-width: 0;
+}
+table.design td {
+  padding: 0 4px;
+  height: 32px;
+}
+table.design th {
+  padding: 0 6px;
+}
+.crow.on td {
+  background: var(--accent-soft) !important;
+}
+.crow.new td:nth-child(2) {
+  box-shadow: inset 3px 0 0 var(--ok);
+}
+.cell-in {
+  width: 100%;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  padding: 0 6px;
+  outline: none;
+  font-size: 12px;
+  min-width: 90px;
+}
+.cell-in:hover {
+  border-color: var(--border);
+}
+.cell-in:focus {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+.cell-in.type {
+  color: var(--syn-type);
+  min-width: 130px;
+}
+.w-flag {
+  width: 36px;
+  text-align: center !important;
+}
+.w-flag input {
+  accent-color: var(--accent);
+}
+.w-move {
+  width: 56px;
+  white-space: nowrap;
+}
+.w-move .btn {
+  width: 20px;
+  height: 20px;
+}
+.w-del {
+  width: 34px;
+}
+.add-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.detail {
+  width: 300px;
+  flex: none;
+  border-left: 1px solid var(--border);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  background: var(--panel-2);
+}
+.detail .def {
+  display: none;
+}
+.list {
+  flex: 1;
+  overflow: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.list.narrow {
+  max-width: 520px;
+  gap: 14px;
+}
+.list.narrow .field {
+  width: 100%;
+}
+.item {
+  width: 100%;
+  max-width: 860px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.item-head,
+.item-foot,
+.pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.item-head .input {
+  max-width: 260px;
+}
+.item-head .kind {
+  width: 120px;
+}
+.pair .input {
+  max-width: 240px;
+}
+.arrow {
+  color: var(--muted);
+}
+.rule {
+  width: 120px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--panel);
+  font: 12px var(--mono);
+  cursor: pointer;
+}
+.chip.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chip .ord {
+  font-weight: 700;
+}
+.small {
+  font-size: 11.5px;
+}
+.sqlview {
+  flex: 1;
+  min-height: 0;
+}

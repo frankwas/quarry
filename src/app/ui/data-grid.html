@@ -1,0 +1,113 @@
+<div class="scroller" #scroller (scroll)="onScroll($event)" (contextmenu)="openMenu($event)">
+  <div class="canvas" [style.width.px]="totalW()" [style.height.px]="headH + totalH()">
+    <div class="head" [style.height.px]="headH">
+      <div class="gutter corner" [style.width.px]="gutterW" (mousedown)="selectAll()" title="Select all (Ctrl+A)"></div>
+      @for (col of columns(); track $index; let c = $index) {
+        <div
+          class="hcell"
+          [class.num]="col.numeric"
+          [style.width.px]="widths()[c]"
+          (click)="headerClick($event, c)"
+          [title]="col.name + ' · ' + col.typeName"
+        >
+          @if (col.primaryKey) {
+            <q-icon name="key" [size]="12" class="pk" />
+          }
+          <span class="hname">{{ col.name }}</span>
+          <span class="htype">{{ col.typeName.toLowerCase() }}</span>
+          @if (activeSort()?.col === c) {
+            <q-icon [name]="activeSort()!.dir === 'asc' ? 'arrowUp' : 'arrowDown'" [size]="12" class="sort" />
+          }
+          <div class="resizer" (mousedown)="startResize($event, c)" (dblclick)="autoFit(c)"></div>
+        </div>
+      }
+    </div>
+
+    <div class="rows" [style.transform]="'translateY(' + (headH + offsetY()) + 'px)'">
+      @for (row of visible(); track row.src) {
+        <div
+          class="row"
+          [class.new]="row.state === 'new'"
+          [class.deleted]="row.state === 'deleted'"
+          [class.alt]="row.view % 2 === 1"
+          [style.height.px]="rowH"
+        >
+          <div class="gutter" [class.sel]="rowSelected(row.view)" [style.width.px]="gutterW" (mousedown)="gutterDown($event, row.view)">
+            @if (row.state === 'new') {
+              <span class="mark new">+</span>
+            } @else if (row.state === 'deleted') {
+              <span class="mark del">−</span>
+            } @else {
+              {{ row.src + 1 }}
+            }
+          </div>
+          @for (v of row.cells; track $index; let c = $index) {
+            <div
+              class="cell"
+              [attr.data-cell]="row.view + ':' + c"
+              [class.num]="columns()[c].numeric"
+              [class.null]="v === null"
+              [class.default]="row.state === 'new' && isDefault(row.src, c)"
+              [class.sel]="isSelected(row.view, c)"
+              [class.focus]="isFocus(row.view, c) && hasFocus()"
+              [class.focus-dim]="isFocus(row.view, c) && !hasFocus()"
+              [class.edited]="row.editedCols.has(c)"
+              [style.width.px]="widths()[c]"
+              (mousedown)="cellDown($event, row.view, c)"
+              (dblclick)="startEdit()"
+              (contextmenu)="openMenu($event, row.view, c); $event.stopPropagation()"
+            >
+              @if (row.state === 'new' && isDefault(row.src, c)) {
+                {{ columns()[c].hint || 'DEFAULT' }}
+              } @else {
+                {{ display(v) }}
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    @if (editing(); as ed) {
+      <input
+        #cellEditor
+        class="cell-editor"
+        [style.top.px]="headH + ed.r * rowH"
+        [style.left.px]="editorLeft(ed.c)"
+        [style.width.px]="widths()[ed.c]"
+        [style.height.px]="rowH"
+        [value]="ed.value"
+        (keydown)="editorKey($event)"
+        (blur)="commitEdit()"
+        spellcheck="false"
+      />
+    }
+  </div>
+
+  @if (!rows().length && !inserted().length) {
+    <div class="no-rows">No rows</div>
+  }
+</div>
+
+@if (menu(); as m) {
+  <div class="ctx-menu" [style.left.px]="m.x" [style.top.px]="m.y">
+    <button (click)="copy('tsv')"><q-icon name="copy" [size]="14" />Copy <span class="hint">Ctrl+C</span></button>
+    <button (click)="copy('tsv-header')">Copy with headers <span class="hint">Ctrl+Shift+C</span></button>
+    <button (click)="copy('insert')">Copy as INSERT</button>
+    <button (click)="copy('json')">Copy as JSON</button>
+    <button (click)="copy('csv')">Copy as CSV</button>
+    <button (click)="copy('markdown')">Copy as Markdown table</button>
+    <button (click)="copy('in-list')">Copy as IN (…) list</button>
+    <hr />
+    <button (click)="filterFocused('=')"><q-icon name="filter" [size]="14" />Filter: equals this value</button>
+    <button (click)="filterFocused('<>')">Filter: not this value</button>
+    @if (editable()) {
+      <hr />
+      <button (click)="menuAction(startEdit.bind(this))"><q-icon name="edit" [size]="14" />Edit cell <span class="hint">Enter</span></button>
+      <button (click)="menuAction(setSelected.bind(this, null))">Set NULL <span class="hint">Ctrl+0</span></button>
+      <button (click)="menuAction(setSelected.bind(this, ''))">Set empty string</button>
+      <button (click)="menuAction(addRow.bind(this))"><q-icon name="plus" [size]="14" />Add row</button>
+      <button class="danger" (click)="menuAction(deleteSelectedRows.bind(this))"><q-icon name="trash" [size]="14" />Delete row(s)</button>
+    }
+  </div>
+}

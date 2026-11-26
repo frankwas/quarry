@@ -1,0 +1,226 @@
+<div class="head">
+  <div class="search">
+    <q-icon name="search" [size]="13" />
+    <input placeholder="Filter schemas & tables" [value]="filter()" (input)="filter.set($any($event.target).value)" spellcheck="false" />
+    @if (filter()) {
+      <button class="btn ghost icon sm" (click)="filter.set('')"><q-icon name="x" [size]="12" /></button>
+    }
+  </div>
+  <button class="btn ghost icon sm" (click)="createSchema()" title="New schema"><q-icon name="plus" /></button>
+  <button class="btn ghost icon sm" (click)="refresh()" title="Refresh"><q-icon name="refresh" /></button>
+</div>
+
+<div class="tree" (contextmenu)="$event.preventDefault()">
+  @if (loading() && !schemas().length) {
+    <div class="pad"><span class="spin"></span></div>
+  }
+  @if (error()) {
+    <div class="pad error-box">{{ error() }}</div>
+  }
+
+  @for (schema of visibleSchemas(); track schema) {
+    <div
+      class="node schema"
+      [class.current]="session().schema() === schema"
+      (click)="toggleSchema(schema)"
+      (dblclick)="selectSchema(schema)"
+      (contextmenu)="openMenu($event, { kind: 'schema', schema })"
+      [title]="'Double-click to make ' + schema + ' the default schema'"
+    >
+      <q-icon class="chev" [name]="isOpen(schema) || filter() ? 'chevronDown' : 'chevronRight'" [size]="13" />
+      <q-icon name="db" [size]="14" class="ico-db" />
+      <span class="label">{{ schema }}</span>
+      @if (objs(schema); as o) {
+        <span class="meta">{{ o.tables.length }}</span>
+      }
+    </div>
+
+    @if (isOpen(schema) || (filter() && objs(schema))) {
+      @if (objects()[schema] === 'loading') {
+        <div class="node l1 muted"><span class="spin"></span></div>
+      } @else if (objError(schema)) {
+        <div class="node l1 danger-text" [title]="objError(schema)!">Failed to load</div>
+      } @else if (objs(schema); as o) {
+        <!-- tables -->
+        <div class="node l1 group" (click)="toggle(schema + ':tables')">
+          <q-icon class="chev" [name]="isOpen(schema + ':tables') ? 'chevronRight' : 'chevronDown'" [size]="13" />
+          <span class="label">Tables</span><span class="meta">{{ o.tables.length }}</span>
+          <button class="btn ghost icon sm add" (click)="$event.stopPropagation(); ws.openDesign(session(), schema, null)" title="New table"><q-icon name="plus" [size]="12" /></button>
+        </div>
+        @if (!isOpen(schema + ':tables')) {
+          @for (t of o.tables; track t.name) {
+            @if (matches(t.name)) {
+              <div
+                class="node l2"
+                (click)="openTable(schema, t)"
+                (contextmenu)="openMenu($event, { kind: 'table', schema, table: t })"
+                [title]="tableTitle(t)"
+              >
+                <q-icon
+                  class="chev"
+                  [name]="isOpen('t:' + schema + '.' + t.name) ? 'chevronDown' : 'chevronRight'"
+                  [size]="12"
+                  (click)="$event.stopPropagation(); toggleTable(schema, t.name)"
+                />
+                <q-icon name="table" [size]="14" class="ico-table" />
+                <span class="label">{{ t.name }}</span>
+              </div>
+              @if (isOpen('t:' + schema + '.' + t.name)) {
+                @for (c of cols(schema, t.name) ?? []; track c.name) {
+                  <div class="node l3 col" [title]="c.columnType + (c.nullable ? '' : ' NOT NULL') + (c.comment ? '\n' + c.comment : '')" (dblclick)="copy(qi(c.name))">
+                    <q-icon [name]="c.key === 'PRI' ? 'key' : c.key === 'MUL' ? 'fk' : 'col'" [size]="12" [class.pk]="c.key === 'PRI'" class="ico-col" />
+                    <span class="label">{{ c.name }}</span>
+                    <span class="meta mono">{{ c.columnType }}</span>
+                  </div>
+                }
+              }
+            }
+          } @empty {
+            <div class="node l2 muted">No tables</div>
+          }
+        }
+
+        <!-- views -->
+        @if (o.views.length) {
+          <div class="node l1 group" (click)="toggle(schema + ':views')">
+            <q-icon class="chev" [name]="isOpen(schema + ':views') ? 'chevronDown' : 'chevronRight'" [size]="13" />
+            <span class="label">Views</span><span class="meta">{{ o.views.length }}</span>
+          </div>
+          @if (isOpen(schema + ':views') || filter()) {
+            @for (t of o.views; track t.name) {
+              @if (matches(t.name)) {
+                <div class="node l2" (click)="openTable(schema, t)" (contextmenu)="openMenu($event, { kind: 'table', schema, table: t })">
+                  <span class="chev-space"></span>
+                  <q-icon name="view" [size]="14" class="ico-view" />
+                  <span class="label">{{ t.name }}</span>
+                </div>
+              }
+            }
+          }
+        }
+
+        <!-- routines -->
+        <div class="node l1 group" (click)="toggle(schema + ':routines')">
+          <q-icon class="chev" [name]="isOpen(schema + ':routines') ? 'chevronDown' : 'chevronRight'" [size]="13" />
+          <span class="label">Routines</span><span class="meta">{{ o.routines.length }}</span>
+        </div>
+        @if (isOpen(schema + ':routines')) {
+          @for (r of o.routines; track r.type + r.name) {
+            <div
+              class="node l2"
+              (dblclick)="routineDdl(schema, r.name, r.type)"
+              (contextmenu)="openMenu($event, { kind: 'routine', schema, name: r.name, type: r.type })"
+              title="Double-click to edit"
+            >
+              <span class="chev-space"></span>
+              <q-icon [name]="r.type === 'PROCEDURE' ? 'proc' : 'fn'" [size]="14" class="ico-fn" />
+              <span class="label">{{ r.name }}</span>
+              <span class="meta">{{ r.type === 'PROCEDURE' ? 'proc' : 'fn' }}</span>
+            </div>
+          } @empty {
+            <div class="node l2 muted">None</div>
+          }
+        }
+
+        <!-- triggers -->
+        @if (o.triggers.length) {
+          <div class="node l1 group" (click)="toggle(schema + ':triggers')">
+            <q-icon class="chev" [name]="isOpen(schema + ':triggers') ? 'chevronDown' : 'chevronRight'" [size]="13" />
+            <span class="label">Triggers</span><span class="meta">{{ o.triggers.length }}</span>
+          </div>
+          @if (isOpen(schema + ':triggers')) {
+            @for (tr of o.triggers; track tr.name) {
+              <div
+                class="node l2"
+                (dblclick)="triggerDdl(schema, tr.name)"
+                (contextmenu)="openMenu($event, { kind: 'trigger', schema, name: tr.name })"
+                [title]="tr.timing + ' ' + tr.event + ' on ' + tr.table"
+              >
+                <span class="chev-space"></span>
+                <q-icon name="bolt" [size]="14" class="ico-trig" />
+                <span class="label">{{ tr.name }}</span>
+                <span class="meta">{{ tr.table }}</span>
+              </div>
+            }
+          }
+        }
+      }
+    }
+  }
+  @if (!loading() && !visibleSchemas().length && !error()) {
+    <div class="pad muted">No schemas{{ filter() ? ' match' : '' }}</div>
+  }
+</div>
+
+<div class="foot">
+  <label class="check sm"><input type="checkbox" [checked]="showSystem()" (change)="showSystem.set(!showSystem())" />System schemas</label>
+</div>
+
+@if (menu(); as m) {
+  <div class="ctx-menu" [style.left.px]="m.x" [style.top.px]="m.y">
+    @switch (m.kind) {
+      @case ('schema') {
+        <button (click)="do(newQueryIn.bind(this, m.schema))"><q-icon name="edit" [size]="14" />New query here</button>
+        <button (click)="do(selectSchema.bind(this, m.schema))"><q-icon name="check" [size]="14" />Set as default schema</button>
+        <hr />
+        <button (click)="do(ws.openDesign.bind(ws, session(), m.schema, null))"><q-icon name="plus" [size]="14" />New table…</button>
+        <button (click)="do(newRoutine.bind(this, m.schema, 'PROCEDURE'))">New procedure…</button>
+        <button (click)="do(newRoutine.bind(this, m.schema, 'FUNCTION'))">New function…</button>
+        <hr />
+        <button (click)="do(ws.openEr.bind(ws, session(), m.schema))"><q-icon name="diagram" [size]="14" />ER diagram</button>
+        <button (click)="do(openDump.bind(this, m.schema))"><q-icon name="download" [size]="14" />Export / dump…</button>
+        <button (click)="do(openImportSql.bind(this, m.schema))"><q-icon name="upload" [size]="14" />Run SQL file…</button>
+        <button (click)="do(openImportCsv.bind(this, m.schema, null))">Import CSV…</button>
+        <hr />
+        <button (click)="do(copy.bind(this, m.schema))"><q-icon name="copy" [size]="14" />Copy name</button>
+        <button class="danger" (click)="do(runDdl.bind(this, 'Drop schema ' + m.schema, 'DROP SCHEMA ' + qi(m.schema), undefined, true))">
+          <q-icon name="trash" [size]="14" />Drop schema…
+        </button>
+      }
+      @case ('table') {
+        <button (click)="do(openTable.bind(this, m.schema, m.table))"><q-icon name="table" [size]="14" />Browse rows</button>
+        <button (click)="do(selectInQuery.bind(this, m.schema, m.table.name))"><q-icon name="edit" [size]="14" />SELECT in new query</button>
+        @if (m.table.type !== 'VIEW') {
+          <button (click)="do(ws.openDesign.bind(ws, session(), m.schema, m.table.name))"><q-icon name="sliders" [size]="14" />Alter table…</button>
+        }
+        <button (click)="do(ws.openInfo.bind(ws, session(), m.schema, m.table.name))"><q-icon name="info" [size]="14" />Info & DDL</button>
+        <hr />
+        <button (click)="do(copy.bind(this, m.table.name))"><q-icon name="copy" [size]="14" />Copy name</button>
+        <button (click)="do(copyDdl.bind(this, m.schema, m.table.name))">Copy CREATE statement</button>
+        @if (m.table.type !== 'VIEW') {
+          <hr />
+          <button (click)="do(openImportCsv.bind(this, m.schema, m.table.name))"><q-icon name="upload" [size]="14" />Import CSV…</button>
+          <button (click)="do(renameTable.bind(this, m.schema, m.table.name))">Rename…</button>
+          <button (click)="do(duplicateTable.bind(this, m.schema, m.table.name))">Duplicate…</button>
+          <hr />
+          <button class="danger" (click)="do(runDdl.bind(this, 'Truncate ' + m.table.name, 'TRUNCATE TABLE ' + qt(m.schema, m.table.name), m.schema, true))">
+            Truncate…
+          </button>
+          <button class="danger" (click)="do(runDdl.bind(this, 'Drop ' + m.table.name, 'DROP TABLE ' + qt(m.schema, m.table.name), m.schema, true))">
+            <q-icon name="trash" [size]="14" />Drop table…
+          </button>
+        } @else {
+          <hr />
+          <button class="danger" (click)="do(runDdl.bind(this, 'Drop view ' + m.table.name, 'DROP VIEW ' + qt(m.schema, m.table.name), m.schema, true))">
+            <q-icon name="trash" [size]="14" />Drop view…
+          </button>
+        }
+      }
+      @case ('routine') {
+        <button (click)="do(routineDdl.bind(this, m.schema, m.name, m.type))"><q-icon name="edit" [size]="14" />Edit in query tab</button>
+        <button (click)="do(copy.bind(this, m.name))"><q-icon name="copy" [size]="14" />Copy name</button>
+        <hr />
+        <button class="danger" (click)="do(runDdl.bind(this, 'Drop ' + m.name, 'DROP ' + m.type + ' ' + qt(m.schema, m.name), m.schema, true))">
+          <q-icon name="trash" [size]="14" />Drop {{ m.type.toLowerCase() }}…
+        </button>
+      }
+      @case ('trigger') {
+        <button (click)="do(triggerDdl.bind(this, m.schema, m.name))"><q-icon name="edit" [size]="14" />Edit in query tab</button>
+        <hr />
+        <button class="danger" (click)="do(runDdl.bind(this, 'Drop ' + m.name, 'DROP TRIGGER ' + qt(m.schema, m.name), m.schema, true))">
+          <q-icon name="trash" [size]="14" />Drop trigger…
+        </button>
+      }
+    }
+  </div>
+}

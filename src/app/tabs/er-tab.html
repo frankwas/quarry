@@ -1,0 +1,84 @@
+<div class="toolbar">
+  <q-icon name="diagram" class="accent" />
+  <strong>{{ tab().schema }}</strong>
+  <span class="muted">{{ shown().length }} tables · {{ paths().length }} relationships</span>
+  <span class="sep"></span>
+  <div class="find">
+    <q-icon name="search" [size]="13" />
+    <input placeholder="Find table" [value]="filter()" (input)="filter.set($any($event.target).value)" (keydown.enter)="focusFirst()" />
+  </div>
+  <div class="seg">
+    <button [class.on]="mode() === 'all'" (click)="setMode('all')">All columns</button>
+    <button [class.on]="mode() === 'keys'" (click)="setMode('keys')">Keys only</button>
+  </div>
+  <label class="check"><input type="checkbox" [checked]="includeViews()" (change)="includeViews.set(!includeViews())" />Views</label>
+  <span class="grow"></span>
+  <button class="btn ghost icon sm" (click)="zoomBy(1 / 1.2)" title="Zoom out"><q-icon name="zoomOut" /></button>
+  <span class="zoom mono">{{ zoomPct() }}%</span>
+  <button class="btn ghost icon sm" (click)="zoomBy(1.2)" title="Zoom in"><q-icon name="zoomIn" /></button>
+  <button class="btn ghost icon sm" (click)="fit()" title="Fit to screen"><q-icon name="fit" /></button>
+  <button class="btn ghost sm" (click)="load(true)" title="Discard manual positions and lay out again"><q-icon name="wand" />Auto-layout</button>
+  <button class="btn ghost sm" (click)="load(false)" title="Reload from the server"><q-icon name="refresh" /></button>
+  <button class="btn ghost sm" (click)="exportSvg()"><q-icon name="download" />SVG</button>
+</div>
+
+<div class="wrap" #wrap (wheel)="wheel($event)" (mousedown)="bgDown($event)">
+  @if (loading() && !tables().length) {
+    <div class="empty"><span class="spin"></span></div>
+  } @else if (error()) {
+    <div class="error-box pad">{{ error() }}</div>
+  } @else if (!shown().length) {
+    <div class="empty">No tables in this schema</div>
+  }
+  <svg #svg class="er" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="er-many" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="12" markerHeight="12" orient="auto-start-reverse">
+        <path d="M 1 1 L 11 6 L 1 11 M 11 1 L 11 11" fill="none" stroke="var(--muted)" stroke-width="1.3" />
+      </marker>
+      <marker id="er-one" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="12" markerHeight="12" orient="auto-start-reverse">
+        <path d="M 7 1 L 7 11 M 10 1 L 10 11" fill="none" stroke="var(--muted)" stroke-width="1.3" />
+      </marker>
+      <pattern id="er-dots" width="22" height="22" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="1" fill="var(--border-strong)" />
+      </pattern>
+    </defs>
+    <rect class="bg" width="100%" height="100%" fill="url(#er-dots)" />
+    <g class="world" [attr.transform]="worldTransform()">
+      @for (p of paths(); track p.name + p.from) {
+        <path class="edge" [class.dim]="edgeDim(p.from, p.to)" [class.hot]="hover() === p.from || hover() === p.to" [attr.d]="p.d" marker-start="url(#er-many)" marker-end="url(#er-one)">
+          <title>{{ p.name }}: {{ p.label }}</title>
+        </path>
+      }
+      @for (t of shown(); track t.name) {
+        <g
+          class="tbl"
+          [class.dim]="dim(t.name)"
+          [class.view]="t.isView"
+          [attr.transform]="'translate(' + t.x + ' ' + t.y + ')'"
+          (mousedown)="tableDown($event, t.name)"
+          (mouseenter)="hover.set(t.name)"
+          (mouseleave)="hover.set(null)"
+          (dblclick)="open(t.name)"
+        >
+          <rect class="box" [attr.width]="t.w" [attr.height]="t.h" rx="7" />
+          <path class="head" [attr.d]="'M0 7 a7 7 0 0 1 7 -7 h' + (t.w - 14) + ' a7 7 0 0 1 7 7 v' + (HEAD - 7) + ' h-' + t.w + ' z'" />
+          <text class="t-name" x="12" [attr.y]="HEAD / 2 + 4.5">{{ t.name }}</text>
+          @for (c of t.cols; track c.name; let i = $index) {
+            <g [attr.transform]="'translate(0 ' + (HEAD + 3 + i * ROW) + ')'">
+              @if (c.key === 'PRI') {
+                <text class="c-key pk" x="10" y="14">⚷</text>
+              } @else if (c.fk) {
+                <text class="c-key fk" x="10" y="14">↗</text>
+              }
+              <text class="c-name" [class.nn]="!c.nullable" x="26" y="14">{{ c.name }}</text>
+              <text class="c-type" [attr.x]="t.w - 10" y="14" text-anchor="end">{{ c.type }}</text>
+            </g>
+          } @empty {
+            <text class="c-type" x="12" [attr.y]="HEAD + 16">no key columns</text>
+          }
+          <title>{{ t.name }} — double-click to browse</title>
+        </g>
+      }
+    </g>
+  </svg>
+</div>

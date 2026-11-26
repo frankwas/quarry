@@ -1,0 +1,120 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.accent {
+  color: var(--accent);
+}
+.grow {
+  flex: 1;
+}
+.zoom {
+  width: 42px;
+  text-align: center;
+  color: var(--muted);
+}
+.find {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+.find input {
+  border: 0;
+  outline: none;
+  background: none;
+  width: 130px;
+  color: var(--text);
+}
+.wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+  cursor: grab;
+}
+.wrap:active {
+  cursor: grabbing;
+}
+.wrap .empty,
+.wrap .pad {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.pad {
+  margin: 14px;
+  bottom: auto !important;
+}
+svg.er {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.edge {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.4;
+  transition: opacity 0.12s;
+}
+.edge.hot {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.edge.dim {
+  opacity: 0.15;
+}
+.tbl {
+  cursor: move;
+  transition: opacity 0.12s;
+}
+.tbl.dim {
+  opacity: 0.3;
+}
+.box {
+  fill: var(--panel);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
+}
+.tbl:hover .box {
+  stroke: var(--accent);
+}
+.head {
+  fill: var(--accent-soft);
+}
+.tbl.view .head {
+  fill: var(--warn-soft);
+}
+.t-name {
+  font: 600 12.5px var(--font);
+  fill: var(--text);
+}
+.c-name {
+  font: 12px var(--mono);
+  fill: var(--text-2);
+}
+.c-name.nn {
+  fill: var(--text);
+}
+.c-type {
+  font: 11px var(--mono);
+  fill: var(--muted);
+}
+.c-key {
+  font: 12px var(--mono);
+}
+.c-key.pk {
+  fill: var(--warn);
+}
+.c-key.fk {
+  fill: var(--syn-number);
+}

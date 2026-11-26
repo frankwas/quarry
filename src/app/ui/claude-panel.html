@@ -1,0 +1,169 @@
+<header class="head">
+  <q-icon name="sparkle" [size]="15" class="spark" />
+  <strong>Claude</strong>
+  <select class="input sm model" [value]="settings.s().claudeModel" (change)="settings.patch({ claudeModel: $any($event.target).value })" title="Model">
+    @for (m of models; track m.id) {
+      <option [value]="m.id" [selected]="m.id === settings.s().claudeModel">{{ m.label }}</option>
+    }
+  </select>
+  <span class="grow"></span>
+  <button class="btn ghost icon sm" (click)="newChat()" [disabled]="running() || !turns().length" title="New chat"><q-icon name="plus" /></button>
+  <button class="btn ghost icon sm" (click)="closed.emit()" title="Close (Ctrl+I)"><q-icon name="x" /></button>
+</header>
+
+@if (claude.hasKey() === false) {
+  <div class="setup">
+    <q-icon name="sparkle" [size]="28" class="spark" />
+    <h3>Connect Claude</h3>
+    <p class="muted">
+      Paste an Anthropic API key to let Claude write and explain SQL for this connection. The key is kept in Windows Credential Manager and only used from Quarry's
+      backend.
+    </p>
+    <input
+      class="input mono"
+      type="password"
+      placeholder="sk-ant-…"
+      [value]="keyDraft()"
+      (input)="keyDraft.set($any($event.target).value)"
+      (keydown.enter)="saveKey()"
+      spellcheck="false"
+    />
+    @if (keyError()) {
+      <div class="error-box">{{ keyError() }}</div>
+    }
+    <div class="row">
+      <button class="btn ghost sm" (click)="openConsole()">Get a key ↗</button>
+      <span class="grow"></span>
+      <button class="btn primary sm" [disabled]="!keyDraft().trim() || savingKey()" (click)="saveKey()">
+        @if (savingKey()) {
+          <span class="spin"></span>
+        }
+        Verify & save
+      </button>
+    </div>
+  </div>
+} @else {
+  <div class="list selectable" #list>
+    @for (t of turns(); track $index; let ti = $index) {
+      @if (t.role === 'user') {
+        <div class="user">
+          <div class="bubble">{{ t.text }}</div>
+          @if (t.context) {
+            <div class="ctx muted">{{ t.context }}</div>
+          }
+        </div>
+      } @else {
+        <div class="assistant">
+          @for (p of t.parts; track $index; let pi = $index) {
+            @switch (p.type) {
+              @case ('thinking') {
+                <button class="thinking" (click)="toggleThinking(ti, pi)">
+                  <q-icon [name]="p.open ? 'chevronDown' : 'chevronRight'" [size]="12" />Thinking
+                </button>
+                @if (p.open) {
+                  <div class="think-text">{{ p.text }}</div>
+                }
+              }
+              @case ('tool') {
+                <div class="tool" [class.err]="p.isError">
+                  @if (p.summary === null) {
+                    <span class="spin"></span>
+                  } @else {
+                    <q-icon [name]="p.isError ? 'x' : 'check'" [size]="12" />
+                  }
+                  <span>{{ toolLabel(p) }}</span>
+                  @if (p.summary) {
+                    <span class="muted"> · {{ p.summary.length > 120 ? p.summary.slice(0, 120) + '…' : p.summary }}</span>
+                  }
+                </div>
+                @if (toolSql(p); as q) {
+                  <code class="tool-sql">{{ q }}</code>
+                }
+              }
+              @case ('notice') {
+                <div class="notice" [class]="p.tone">{{ p.text }}</div>
+              }
+              @case ('text') {
+                @for (s of p.segs; track $index) {
+                  @if (s.kind === 'md') {
+                    <div class="md" [innerHTML]="s.html"></div>
+                  } @else {
+                    <div class="code">
+                      <pre>{{ s.code }}</pre>
+                      @if (!s.open) {
+                        <div class="code-actions">
+                          @if (isSql(s.lang)) {
+                            <button class="btn sm" (click)="insert.emit(s.code)" title="Insert at the cursor in this editor"><q-icon name="arrowDown" />Insert</button>
+                            <button class="btn ghost sm" (click)="replace.emit(s.code)" title="Replace the editor contents">Replace</button>
+                            <button class="btn ghost sm" (click)="newTab.emit(s.code)" title="Open in a new query tab">New tab</button>
+                          }
+                          <span class="grow"></span>
+                          <button class="btn ghost sm" (click)="copy(s.code)"><q-icon name="copy" />{{ copied() === s.code ? 'Copied' : 'Copy' }}</button>
+                        </div>
+                      }
+                    </div>
+                  }
+                }
+              }
+            }
+          }
+          @if (running() && ti === turns().length - 1) {
+            <div class="typing"><span></span><span></span><span></span></div>
+          }
+          @if (t.usage) {
+            <div class="usage muted">{{ t.usage }}</div>
+          }
+        </div>
+      }
+    } @empty {
+      <div class="welcome">
+        <q-icon name="sparkle" [size]="26" class="spark" />
+        <p>
+          Ask for a query, a migration, or an explanation. Claude can see the structure of
+          <strong>{{ schema() ?? 'your schemas' }}</strong> and, if you include it, what's in this editor.
+        </p>
+        <div class="sugg">
+          @for (s of suggestions; track s) {
+            <button class="chip" (click)="draft.set(s); box.focus()">{{ s }}</button>
+          }
+        </div>
+      </div>
+    }
+  </div>
+
+  <footer class="foot">
+    <div class="input-wrap">
+      <textarea
+        #box
+        rows="2"
+        placeholder="Ask Claude…  (Enter to send, Shift+Enter for a new line)"
+        [value]="draft()"
+        (input)="draft.set($any($event.target).value); autosize(box)"
+        (keydown)="keydown($event)"
+        [disabled]="claude.hasKey() === null"
+      ></textarea>
+      @if (running()) {
+        <button class="btn danger icon sm sendbtn" (click)="stop()" title="Stop"><q-icon name="stop" /></button>
+      } @else {
+        <button class="btn primary icon sm sendbtn" (click)="send()" [disabled]="!draft().trim()" title="Send"><q-icon name="send" /></button>
+      }
+    </div>
+    <div class="opts">
+      <label class="check"><input type="checkbox" [checked]="includeEditor()" (change)="includeEditor.set(!includeEditor())" />Include editor</label>
+      <label class="check" title="Lets Claude run SELECTs (max 50 rows, read-only transaction) to look at real data. Results are sent to Anthropic.">
+        <input type="checkbox" [checked]="settings.s().claudeAllowQueries" (change)="settings.patch({ claudeAllowQueries: !settings.s().claudeAllowQueries })" />Allow
+        read-only queries
+      </label>
+      <span class="grow"></span>
+      <select class="input sm effort" [value]="settings.s().claudeEffort" (change)="settings.patch({ claudeEffort: $any($event.target).value })" title="Effort: how hard Claude thinks">
+        @for (e of ['low', 'medium', 'high', 'xhigh']; track e) {
+          <option [value]="e" [selected]="e === settings.s().claudeEffort">{{ e }} effort</option>
+        }
+      </select>
+    </div>
+    <div class="privacy muted">
+      Sends schema structure{{ includeEditor() ? ', editor contents' : '' }}{{ settings.s().claudeAllowQueries ? ' and query results' : '' }} to Anthropic. Claude never runs
+      writes; you run its scripts.
+    </div>
+  </footer>
+}

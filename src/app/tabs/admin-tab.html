@@ -1,0 +1,209 @@
+@if (error()) {
+  <div class="error-box pad">{{ error() }}</div>
+}
+
+@switch (section()) {
+  @case ('status') {
+    <div class="page">
+      <div class="head">
+        <div>
+          <h1>Server status</h1>
+          <div class="muted">{{ vars()['version_comment'] }} {{ vars()['version'] }} · {{ vars()['hostname'] }}:{{ vars()['port'] }}</div>
+        </div>
+        <span class="grow"></span>
+        <label class="check"><input type="checkbox" [checked]="autoRefresh()" (change)="autoRefresh.set(!autoRefresh())" />Live (2s)</label>
+      </div>
+
+      @if (cur(); as c) {
+        <div class="kpis">
+          <div class="kpi card"><div class="k">Uptime</div><div class="v">{{ uptime(c['Uptime']) }}</div></div>
+          <div class="kpi card">
+            <div class="k">Connections</div>
+            <div class="v">{{ c['Threads_connected'] }} <span class="of">/ {{ vars()['max_connections'] }}</span></div>
+            <div class="sub muted">peak {{ c['Max_used_connections'] }} · {{ c['Aborted_connects'] }} aborted</div>
+          </div>
+          <div class="kpi card">
+            <div class="k">Buffer pool</div>
+            <div class="v">{{ bufferUse() !== null ? (bufferUse()! * 100).toFixed(0) + '%' : '—' }} <span class="of">of {{ fb(+vars()['innodb_buffer_pool_size']) }}</span></div>
+            <div class="sub muted">hit ratio {{ hitRatio() !== null ? (hitRatio()! * 100).toFixed(2) + '%' : '—' }}</div>
+          </div>
+          <div class="kpi card">
+            <div class="k">Slow queries</div>
+            <div class="v">{{ c['Slow_queries'].toLocaleString() }}</div>
+            <div class="sub muted">long_query_time {{ vars()['long_query_time'] }}s · log {{ vars()['slow_query_log'] }}</div>
+          </div>
+        </div>
+
+        <div class="charts">
+          @for (ch of [
+            { label: 'Queries / s', series: qps(), fmt: 'rate' },
+            { label: 'Reads / s (SELECT)', series: reads(), fmt: 'rate' },
+            { label: 'Writes / s (INSERT·UPDATE·DELETE)', series: writes(), fmt: 'rate' },
+            { label: 'Threads running', series: running(), fmt: 'int' },
+            { label: 'Network in', series: netIn(), fmt: 'bytes' },
+            { label: 'Network out', series: netOut(), fmt: 'bytes' }
+          ]; track ch.label) {
+            <div class="chart card">
+              <div class="ch-head">
+                <span class="k">{{ ch.label }}</span>
+                <span class="ch-v mono">{{ ch.fmt === 'bytes' ? fb(last(ch.series)) + '/s' : ch.fmt === 'int' ? last(ch.series) : fmtRate(last(ch.series)) }}</span>
+              </div>
+              <svg viewBox="0 0 220 44" preserveAspectRatio="none" class="spark">
+                @if (ch.series.length > 1) {
+                  <polyline [attr.points]="spark(ch.series) + ' 220,44 ' + (220 - (ch.series.length - 1) * (220 / 59)).toFixed(1) + ',44'" class="area" />
+                  <polyline [attr.points]="spark(ch.series)" class="line" />
+                }
+              </svg>
+            </div>
+          }
+        </div>
+
+        <div class="section-title">Configuration</div>
+        <div class="card cfg">
+          @for (k of ['character_set_server', 'collation_server', 'time_zone', 'system_time_zone', 'max_allowed_packet', 'wait_timeout', 'innodb_flush_log_at_trx_commit', 'log_bin', 'binlog_format', 'read_only', 'datadir', 'sql_mode']; track k) {
+            <div class="cfg-row"><span class="mono muted">{{ k }}</span><span class="mono selectable">{{ k === 'max_allowed_packet' ? fb(+vars()[k]) : vars()[k] }}</span></div>
+          }
+        </div>
+      } @else if (!error()) {
+        <div class="empty"><span class="spin"></span></div>
+      }
+    </div>
+  }
+
+  @case ('processes') {
+    <div class="toolbar">
+      <strong>Processes</strong>
+      <span class="muted">{{ shownProcs().length }} of {{ procs().length }}</span>
+      <span class="sep"></span>
+      <input class="input sm filter" placeholder="Filter user, host, db, query…" [value]="procFilter()" (input)="procFilter.set($any($event.target).value)" />
+      <label class="check"><input type="checkbox" [checked]="hideSleep()" (change)="hideSleep.set(!hideSleep())" />Hide sleeping</label>
+      <span class="grow"></span>
+      <label class="check"><input type="checkbox" [checked]="autoRefresh()" (change)="autoRefresh.set(!autoRefresh())" />Live</label>
+      <button class="btn ghost icon sm" (click)="refresh()"><q-icon name="refresh" /></button>
+    </div>
+    <div class="scroll">
+      <table class="tbl">
+        <thead>
+          <tr><th>Id</th><th>User</th><th>Host</th><th>DB</th><th>Command</th><th class="num">Time</th><th>State</th><th class="info">Query</th><th></th></tr>
+        </thead>
+        <tbody>
+          @for (p of shownProcs(); track p['Id']) {
+            <tr [class.long]="+(p['Time'] ?? 0) > 10 && p['Command'] === 'Query'">
+              <td class="mono">{{ p['Id'] }}</td>
+              <td>{{ p['User'] }}</td>
+              <td class="mono muted">{{ p['Host'] }}</td>
+              <td>{{ p['db'] }}</td>
+              <td>{{ p['Command'] }}</td>
+              <td class="num mono">{{ p['Time'] }}s</td>
+              <td class="muted">{{ p['State'] }}</td>
+              <td class="info mono selectable" [title]="p['Info'] ?? ''" (dblclick)="copyInfo(p)">{{ p['Info'] }}</td>
+              <td class="acts">
+                @if (p['Info']) {
+                  <button class="btn ghost sm" (click)="kill(p, true)">Kill query</button>
+                }
+                <button class="btn ghost icon sm" (click)="kill(p, false)" title="Kill connection"><q-icon name="x" [size]="13" /></button>
+              </td>
+            </tr>
+          } @empty {
+            <tr><td colspan="9" class="muted">No active processes{{ hideSleep() ? ' (sleeping hidden)' : '' }}</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  @case ('users') {
+    <div class="users">
+      <aside class="ulist">
+        <div class="uhead">
+          <strong>Accounts</strong>
+          <span class="grow"></span>
+          <button class="btn ghost icon sm" (click)="refresh()"><q-icon name="refresh" /></button>
+          <button class="btn primary sm" (click)="createUser()"><q-icon name="plus" />User</button>
+        </div>
+        <div class="uitems">
+          @for (u of users(); track u.user + '@' + u.host) {
+            <div class="uitem" [class.on]="selUser()?.user === u.user && selUser()?.host === u.host" (click)="pickUser(u)">
+              <q-icon name="users" [size]="13" />
+              <span class="mono">{{ u.user || '(anonymous)' }}<span class="muted">&#64;{{ u.host }}</span></span>
+              <span class="grow"></span>
+              @if (u.locked) {
+                <span class="badge warn">locked</span>
+              }
+            </div>
+          }
+        </div>
+      </aside>
+      <section class="udetail">
+        @if (selUser(); as u) {
+          <div class="ud-head">
+            <h2 class="mono">{{ u.user }}<span class="muted">&#64;{{ u.host }}</span></h2>
+            <span class="grow"></span>
+            <button class="btn sm" (click)="changePassword()"><q-icon name="key" />Password…</button>
+            <button class="btn sm" (click)="toggleLock()"><q-icon name="lock" />Lock / unlock</button>
+            <button class="btn sm" (click)="dropUser()"><q-icon name="trash" />Drop…</button>
+          </div>
+
+          <div class="section-title">Current grants <span class="muted hint">click a grant to revoke it</span></div>
+          <div class="card grants">
+            @for (g of grants(); track g) {
+              <div class="grant mono selectable" (click)="revoke(g)" [class.revocable]="!g.startsWith('GRANT USAGE') && g.startsWith('GRANT')">{{ g }}</div>
+            }
+          </div>
+
+          <div class="section-title">Grant</div>
+          <div class="card gform">
+            <div class="grow-row">
+              <span class="label">On</span>
+              <select class="input sm target" [value]="grantTarget()" (change)="grantTarget.set($any($event.target).value)">
+                <option value="*.*">*.* (all schemas)</option>
+                @for (s of schemas(); track s) {
+                  <option [value]="s">{{ s }}.*</option>
+                }
+              </select>
+              <span class="grow"></span>
+              <button class="btn ghost sm" (click)="presetPrivs('read')">Read-only</button>
+              <button class="btn ghost sm" (click)="presetPrivs('write')">Read/write</button>
+              <button class="btn ghost sm" (click)="presetPrivs('all')">All</button>
+              <button class="btn ghost sm" (click)="presetPrivs('none')">None</button>
+            </div>
+            <div class="privs">
+              @for (p of privs; track p) {
+                <label class="check"><input type="checkbox" [checked]="grantPrivs().has(p)" (change)="togglePriv(p)" />{{ p }}</label>
+              }
+            </div>
+            <div><button class="btn primary sm" [disabled]="!grantPrivs().size" (click)="grant()">Review GRANT…</button></div>
+          </div>
+        } @else {
+          <div class="empty">Select an account</div>
+        }
+      </section>
+    </div>
+  }
+
+  @case ('variables') {
+    <div class="toolbar">
+      <div class="seg">
+        <button [class.on]="varScope() === 'GLOBAL'" (click)="setScope('GLOBAL')">Global</button>
+        <button [class.on]="varScope() === 'SESSION'" (click)="setScope('SESSION')">Session</button>
+      </div>
+      <input class="input sm filter" placeholder="Filter variables…" [value]="varFilter()" (input)="varFilter.set($any($event.target).value)" />
+      <span class="muted">{{ shownVars().length }} variables · double-click to change</span>
+      <span class="grow"></span>
+      <button class="btn ghost icon sm" (click)="refresh()"><q-icon name="refresh" /></button>
+    </div>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr><th>Variable</th><th>Value</th></tr></thead>
+        <tbody>
+          @for (v of shownVars(); track v.name) {
+            <tr (dblclick)="editVar(v)">
+              <td class="mono">{{ v.name }}</td>
+              <td class="mono selectable val">{{ v.value }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+}

@@ -1,0 +1,238 @@
+@if (error()) {
+  <div class="error-box pad">{{ error() }}</div>
+} @else if (def(); as d) {
+  <div class="toolbar">
+    <span class="kw">{{ isNew() ? 'CREATE' : 'ALTER' }} TABLE</span>
+    <span class="schema mono">{{ tab().schema }}.</span>
+    <input class="input name mono" [value]="d.name" (input)="setTable('name', $any($event.target).value)" placeholder="table_name" spellcheck="false" />
+    <div class="seg secs">
+      <button [class.on]="section() === 'columns'" (click)="section.set('columns')">Columns <span class="n">{{ d.columns.length }}</span></button>
+      <button [class.on]="section() === 'indexes'" (click)="section.set('indexes')">Indexes <span class="n">{{ d.indexes.length }}</span></button>
+      <button [class.on]="section() === 'fks'" (click)="section.set('fks')">Foreign keys <span class="n">{{ d.fks.length }}</span></button>
+      <button [class.on]="section() === 'options'" (click)="section.set('options')">Options</button>
+      <button [class.on]="section() === 'sql'" (click)="section.set('sql')">SQL @if (dirty()) {<span class="n dot"></span>}</button>
+    </div>
+    <span class="grow"></span>
+    @if (!isNew()) {
+      <button class="btn sm" [disabled]="!dirty()" (click)="revert()"><q-icon name="undo" />Revert</button>
+    }
+    <button class="btn primary sm" [disabled]="!dirty() || busy()" (click)="apply()">
+      @if (busy()) {
+        <span class="spin"></span>
+      } @else {
+        <q-icon name="check" />
+      }
+      {{ isNew() ? 'Create table' : 'Review & apply' }}
+    </button>
+  </div>
+
+  <div class="body">
+    @switch (section()) {
+      @case ('columns') {
+        <div class="cols">
+          <table class="tbl design">
+            <thead>
+              <tr>
+                <th class="w-move"></th>
+                <th>Name</th>
+                <th>Type</th>
+                <th class="w-flag" title="Primary key">PK</th>
+                <th class="w-flag" title="Not null">NN</th>
+                <th class="w-flag" title="Unsigned">UN</th>
+                <th class="w-flag" title="Auto increment">AI</th>
+                <th>Default</th>
+                <th>Comment</th>
+                <th class="w-del"></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of d.columns; track $index; let i = $index) {
+                <tr class="crow" [class.on]="selCol() === i" [class.new]="!c.orig" (mousedown)="selCol.set(i)">
+                  <td class="w-move">
+                    <button class="btn ghost icon sm" (click)="moveCol(i, -1)" [disabled]="i === 0" title="Move up"><q-icon name="arrowUp" [size]="12" /></button>
+                    <button class="btn ghost icon sm" (click)="moveCol(i, 1)" [disabled]="i === d.columns.length - 1" title="Move down"><q-icon name="arrowDown" [size]="12" /></button>
+                  </td>
+                  <td><input class="cell-in mono" [value]="c.name" (input)="setCol(i, 'name', $any($event.target).value)" placeholder="column_name" spellcheck="false" /></td>
+                  <td><input class="cell-in mono type" [value]="c.type" (change)="setCol(i, 'type', $any($event.target).value.toUpperCase())" list="q-types" spellcheck="false" /></td>
+                  <td class="w-flag"><input type="checkbox" [checked]="c.pk" (change)="setCol(i, 'pk', !c.pk)" /></td>
+                  <td class="w-flag"><input type="checkbox" [checked]="!c.nullable" (change)="setCol(i, 'nullable', !c.nullable)" /></td>
+                  <td class="w-flag"><input type="checkbox" [checked]="c.unsigned" (change)="setCol(i, 'unsigned', !c.unsigned)" /></td>
+                  <td class="w-flag"><input type="checkbox" [checked]="c.autoIncrement" (change)="setCol(i, 'autoIncrement', !c.autoIncrement)" /></td>
+                  <td>
+                    <input
+                      class="cell-in mono"
+                      [value]="c.default ?? ''"
+                      (change)="setCol(i, 'default', $any($event.target).value === '' ? null : $any($event.target).value)"
+                      [placeholder]="c.autoIncrement ? 'auto' : c.nullable ? 'NULL' : 'none'"
+                      title="SQL expression: 'text', 0, NULL, CURRENT_TIMESTAMP, (uuid())"
+                      spellcheck="false"
+                    />
+                  </td>
+                  <td><input class="cell-in" [value]="c.comment" (change)="setCol(i, 'comment', $any($event.target).value)" /></td>
+                  <td class="w-del"><button class="btn ghost icon sm" (click)="removeCol(i)" title="Remove column"><q-icon name="trash" [size]="13" /></button></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+          <datalist id="q-types">
+            @for (t of types; track t) {
+              <option [value]="t"></option>
+            }
+          </datalist>
+          <div class="add-row">
+            <button class="btn sm" (click)="addCol()"><q-icon name="plus" />Add column</button>
+            <button class="btn ghost sm" (click)="addTimestamps()">+ created_at / updated_at</button>
+          </div>
+        </div>
+
+        @if (col(); as c) {
+          <aside class="detail">
+            <div class="section-title">Column · {{ c.name || 'new' }}</div>
+            <div class="field">
+              <label>Collation</label>
+              <select class="input sm" [value]="c.collation ?? ''" (change)="setCol(selCol(), 'collation', $any($event.target).value || null)" [disabled]="!isText(c.type)">
+                <option value="">table default</option>
+                @for (co of collations(); track co) {
+                  <option [value]="co" [selected]="co === c.collation">{{ co }}</option>
+                }
+              </select>
+            </div>
+            <label class="check"><input type="checkbox" [checked]="c.onUpdateNow" (change)="setCol(selCol(), 'onUpdateNow', !c.onUpdateNow)" />ON UPDATE CURRENT_TIMESTAMP</label>
+            <div class="field">
+              <label>Generated (stored) expression</label>
+              <input class="input sm mono" [value]="c.generated ?? ''" (change)="setCol(selCol(), 'generated', $any($event.target).value || null)" placeholder="e.g. CONCAT(first, ' ', last)" spellcheck="false" />
+            </div>
+          </aside>
+        }
+      }
+
+      @case ('indexes') {
+        <div class="list">
+          @for (ix of d.indexes; track $index; let i = $index) {
+            <div class="card item">
+              <div class="item-head">
+                <input class="input sm mono" [value]="ix.name" (change)="setIdx(i, 'name', $any($event.target).value)" spellcheck="false" />
+                <select class="input sm kind" [value]="ix.kind" (change)="setIdx(i, 'kind', $any($event.target).value)">
+                  @for (k of ['INDEX', 'UNIQUE', 'FULLTEXT', 'SPATIAL']; track k) {
+                    <option [value]="k" [selected]="k === ix.kind">{{ k }}</option>
+                  }
+                </select>
+                <input class="input sm" [value]="ix.comment" (change)="setIdx(i, 'comment', $any($event.target).value)" placeholder="comment" />
+                <button class="btn ghost icon sm" (click)="removeIdx(i)"><q-icon name="trash" [size]="13" /></button>
+              </div>
+              <div class="chips">
+                @for (cn of colNames(); track cn) {
+                  <button class="chip" [class.on]="idxHas(ix, cn)" (click)="toggleIdxCol(i, cn)">
+                    @if (idxHas(ix, cn)) {
+                      <span class="ord">{{ ix.columns.indexOf(cn) + 1 || '•' }}</span>
+                    }
+                    {{ cn }}
+                  </button>
+                }
+              </div>
+              <div class="muted small mono">({{ ix.columns.join(', ') || 'pick columns in order' }})</div>
+            </div>
+          } @empty {
+            <div class="muted pad">No secondary indexes. The primary key is set on the Columns tab.</div>
+          }
+          <button class="btn sm" (click)="addIdx()"><q-icon name="plus" />Add index</button>
+        </div>
+      }
+
+      @case ('fks') {
+        <div class="list">
+          @for (fk of d.fks; track $index; let i = $index) {
+            <div class="card item">
+              <div class="item-head">
+                <input class="input sm mono" [value]="fk.name" (change)="setFk(i, 'name', $any($event.target).value)" spellcheck="false" />
+                <span class="muted">references</span>
+                <select class="input sm" [value]="fk.refTable" (change)="setFk(i, 'refTable', $any($event.target).value)" (focus)="loadRefCols(fk.refTable)">
+                  <option value="">table…</option>
+                  @for (t of tables(); track t) {
+                    <option [value]="t" [selected]="t === fk.refTable">{{ t }}</option>
+                  }
+                </select>
+                <button class="btn ghost icon sm" (click)="removeFk(i)"><q-icon name="trash" [size]="13" /></button>
+              </div>
+              @for (cn of fk.columns; track $index; let p = $index) {
+                <div class="pair">
+                  <select class="input sm mono" [value]="cn" (change)="setFkPair(i, p, 'columns', $any($event.target).value)">
+                    <option value="">column…</option>
+                    @for (c of colNames(); track c) {
+                      <option [value]="c" [selected]="c === cn">{{ c }}</option>
+                    }
+                  </select>
+                  <span class="arrow">→</span>
+                  <select class="input sm mono" [value]="fk.refColumns[p]" (change)="setFkPair(i, p, 'refColumns', $any($event.target).value)" (focus)="loadRefCols(fk.refTable)">
+                    <option value="">{{ fk.refTable || 'table' }} column…</option>
+                    @for (c of refCols()[fk.refTable] ?? (fk.refColumns[p] ? [fk.refColumns[p]] : []); track c) {
+                      <option [value]="c" [selected]="c === fk.refColumns[p]">{{ c }}</option>
+                    }
+                  </select>
+                  <button class="btn ghost icon sm" (click)="removeFkPair(i, p)"><q-icon name="minus" [size]="13" /></button>
+                </div>
+              }
+              <div class="item-foot">
+                <button class="btn ghost sm" (click)="addFkPair(i)"><q-icon name="plus" />column pair</button>
+                <span class="grow"></span>
+                <label class="muted">ON UPDATE</label>
+                <select class="input sm rule" [value]="fk.onUpdate" (change)="setFk(i, 'onUpdate', $any($event.target).value)">
+                  @for (r of fkRules; track r) {
+                    <option [value]="r" [selected]="r === fk.onUpdate">{{ r }}</option>
+                  }
+                </select>
+                <label class="muted">ON DELETE</label>
+                <select class="input sm rule" [value]="fk.onDelete" (change)="setFk(i, 'onDelete', $any($event.target).value)">
+                  @for (r of fkRules; track r) {
+                    <option [value]="r" [selected]="r === fk.onDelete">{{ r }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+          } @empty {
+            <div class="muted pad">No foreign keys.</div>
+          }
+          <button class="btn sm" (click)="addFk()"><q-icon name="plus" />Add foreign key</button>
+        </div>
+      }
+
+      @case ('options') {
+        <div class="list narrow">
+          <div class="field">
+            <label>Engine</label>
+            <select class="input" [value]="d.engine" (change)="setTable('engine', $any($event.target).value)">
+              @for (e of engines; track e) {
+                <option [value]="e" [selected]="e === d.engine">{{ e }}</option>
+              }
+            </select>
+          </div>
+          <div class="field">
+            <label>Default collation</label>
+            <select class="input" [value]="d.collation" (change)="setTable('collation', $any($event.target).value)">
+              <option value="">schema default</option>
+              @for (co of collations(); track co) {
+                <option [value]="co" [selected]="co === d.collation">{{ co }}</option>
+              }
+            </select>
+          </div>
+          <div class="field">
+            <label>Comment</label>
+            <textarea class="input" rows="3" [value]="d.comment" (change)="setTable('comment', $any($event.target).value)"></textarea>
+          </div>
+        </div>
+      }
+
+      @case ('sql') {
+        <div class="sqlview">
+          @if (preview()) {
+            <q-sql-editor [value]="preview()" [readOnly]="true" />
+          } @else {
+            <div class="empty">No changes yet</div>
+          }
+        </div>
+      }
+    }
+  </div>
+} @else {
+  <div class="empty"><span class="spin"></span></div>
+}

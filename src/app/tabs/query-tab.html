@@ -1,0 +1,186 @@
+<div class="toolbar">
+  <button class="btn primary sm" (click)="run('current')" [disabled]="running() || !ready()" title="Run statement at cursor (Ctrl+Enter)">
+    <q-icon name="playLine" />Run
+  </button>
+  <button class="btn sm" (click)="run('all')" [disabled]="running() || !ready()" title="Run all / selection (Ctrl+Shift+Enter)">
+    <q-icon name="play" />Run all
+  </button>
+  @if (running()) {
+    <button class="btn danger sm" (click)="cancel()" title="Cancel the running query (KILL QUERY)"><q-icon name="stop" />Stop</button>
+  }
+  <button class="btn ghost sm" (click)="explain()" [disabled]="running() || !ready()" title="Explain statement at cursor (Ctrl+E)"><q-icon name="activity" />Explain</button>
+  <span class="sep"></span>
+  <button class="btn ghost icon sm" (click)="format()" title="Format SQL (Shift+Alt+F)"><q-icon name="wand" /></button>
+  <button class="btn ghost icon sm" (click)="openFile()" title="Open .sql file"><q-icon name="folder" /></button>
+  <button class="btn ghost icon sm" (click)="save()" title="Save (Ctrl+S)"><q-icon name="save" /></button>
+  <button class="btn ghost icon sm" [class.on]="showHistory()" (click)="showHistory.set(!showHistory())" title="Query history"><q-icon name="history" /></button>
+  <span class="grow"></span>
+  <button class="btn sm claude-btn" [class.on]="showClaude()" (click)="toggleClaude()" title="Ask Claude (Ctrl+I)"><q-icon name="sparkle" />Claude</button>
+  <label class="db-pick" title="Default schema for this editor (USE)">
+    <q-icon name="db" [size]="13" />
+    <select class="input sm" [value]="currentDb() ?? ''" (change)="useSchema($any($event.target).value)">
+      @if (!currentDb()) {
+        <option value="">(no schema)</option>
+      }
+      @for (s of schemas(); track s) {
+        <option [value]="s" [selected]="s === currentDb()">{{ s }}</option>
+      }
+    </select>
+  </label>
+</div>
+
+<div class="body">
+  <div class="split" [style.gridTemplateRows]="split() * 100 + '% 5px 1fr'">
+    <div class="editor-wrap">
+      @if (connError()) {
+        <div class="error-box conn-err">Editor connection failed: {{ connError() }}</div>
+      }
+      <q-sql-editor
+        [value]="tab().initialSql"
+        [schema]="completion()"
+        [defaultSchema]="currentDb()"
+        [commands]="commands"
+        placeholder="Write SQL…  Ctrl+Enter runs the statement under the cursor, Ctrl+Shift+Enter runs everything."
+        (changed)="onText($event)"
+      />
+    </div>
+    <div class="splitter" (mousedown)="startSplit($event)"></div>
+
+    <div class="results">
+      <div class="rtabs">
+        @for (p of panels(); track p.id) {
+          <button class="rtab" [class.on]="activePanel() === p.id" (click)="activePanel.set(p.id)">
+            <q-icon name="table" [size]="13" />{{ p.label }}
+            <span class="count">{{ p.rs.totalRows.toLocaleString() }}</span>
+          </button>
+        }
+        <button class="rtab" [class.on]="activePanel() === 'messages'" (click)="activePanel.set('messages')">
+          Messages
+          @if (errorCount()) {
+            <span class="count err">{{ errorCount() }}</span>
+          }
+        </button>
+        <span class="grow"></span>
+        @if (current(); as p) {
+          @if (p.edit && gridDirty()) {
+            <button class="btn sm" (click)="discardEdits()"><q-icon name="undo" />Discard</button>
+            <button class="btn primary sm" (click)="applyEdits()"><q-icon name="check" />Apply changes</button>
+          } @else if (p.edit) {
+            <span class="badge accent" title="Double-click a cell to edit. Changes are applied as one transaction.">editable · {{ p.edit.table }}</span>
+            <button class="btn ghost icon sm" (click)="grid()?.addRow()" title="Add row"><q-icon name="plus" /></button>
+          } @else if (!session().readOnly) {
+            <span class="badge" title="Results are editable when they come from a single table and include its primary key">read-only result</span>
+          }
+          <button class="btn ghost sm" (click)="exportResult('csv')" title="Export these rows as CSV"><q-icon name="download" />CSV</button>
+          <button class="btn ghost sm" (click)="exportResult('json')">JSON</button>
+          <button class="btn ghost sm" (click)="exportResult('sql')">SQL</button>
+          <button class="btn ghost icon sm" [class.on]="showInspector()" (click)="toggleInspector()" title="Value inspector"><q-icon name="info" /></button>
+        }
+      </div>
+
+      <div class="rbody">
+        @if (current(); as p) {
+          <div class="grid-area" [class.with-inspector]="showInspector()">
+            <q-data-grid
+              [columns]="p.columns"
+              [rows]="p.rs.rows"
+              [editable]="!!p.edit"
+              [tableName]="p.edit ? '`' + p.edit.table + '`' : null"
+              (dirtyChange)="gridDirty.set($event)"
+              (selectionChange)="selected.set($event)"
+            />
+            @if (showInspector()) {
+              <q-value-inspector [cell]="selected()" [editable]="!!p.edit" (apply)="grid()?.setFocused($event)" />
+            }
+          </div>
+        } @else {
+          <div class="messages selectable">
+            @for (m of messages(); track $index) {
+              <div class="msg" [class.err]="m.error">
+                <q-icon [name]="m.error ? 'x' : 'check'" [size]="14" class="msg-icon" />
+                <div class="msg-main">
+                  <code class="msg-sql">{{ m.sql.length > 400 ? m.sql.slice(0, 400) + '…' : m.sql }}</code>
+                  <div class="msg-sum">{{ stmtSummary(m) }}</div>
+                  @if (m.error) {
+                    <button class="btn sm fix" (click)="fixWithClaude(m.sql, m.error)"><q-icon name="sparkle" />Fix with Claude</button>
+                  }
+                </div>
+                <span class="msg-time">{{ fmtMs(m.elapsedMs) }}</span>
+              </div>
+            } @empty {
+              <div class="empty">
+                <div>Run a query to see results here.</div>
+                <div class="keys"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> statement &nbsp; <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> all &nbsp; <kbd>Ctrl</kbd>+<kbd>Space</kbd> complete</div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="status">
+        @if (running()) {
+          <span class="spin"></span><span>Running… {{ fmtMs(elapsed()) }}</span>
+        } @else if (current(); as p) {
+          <span>{{ p.rs.totalRows.toLocaleString() }} rows</span>
+          @if (p.rs.truncated) {
+            <span class="warn-text">showing first {{ p.rs.rows.length.toLocaleString() }} (limit in settings)</span>
+          }
+          <span class="muted">{{ fmtMs(p.stmt.elapsedMs) }}</span>
+          @if (grid()?.selectionInfo(); as si) {
+            <span class="muted">{{ si }}</span>
+          }
+          @if (grid()?.dirtyCount(); as dc) {
+            <span class="warn-text">{{ dc }} pending change{{ dc > 1 ? 's' : '' }}</span>
+          }
+        } @else if (lastStmt(); as m) {
+          <span [class.danger-text]="m.error">{{ messages().length }} statement{{ messages().length > 1 ? 's' : '' }}</span>
+          <span class="muted">{{ fmtMs(m.elapsedMs) }}</span>
+        }
+        <span class="grow"></span>
+        @if (filePath()) {
+          <span class="muted path" [title]="filePath()!">{{ filePath() }}</span>
+        }
+      </div>
+    </div>
+  </div>
+
+  @if (showHistory()) {
+    <aside class="history">
+      <div class="hhead">
+        <input class="input sm" placeholder="Search history…" [value]="historyFilter()" (input)="historyFilter.set($any($event.target).value)" />
+        <button class="btn ghost sm" (click)="clearHistory()" title="Clear history for this connection"><q-icon name="trash" /></button>
+        <button class="btn ghost icon sm" (click)="showHistory.set(false)"><q-icon name="x" /></button>
+      </div>
+      <div class="hlist">
+        @for (h of filteredHistory(); track h.at + h.sql) {
+          <div class="hitem" (click)="useHistory(h)" (dblclick)="useHistory(h, true)" title="Click to insert, double-click to run">
+            <code>{{ h.sql.length > 220 ? h.sql.slice(0, 220) + '…' : h.sql }}</code>
+            <div class="hmeta">
+              <span [class.danger-text]="!h.ok">{{ h.ok ? '✓' : '✗' }}</span>
+              <span>{{ relTime(h.at) }}</span>
+              <span>{{ fmtMs(h.ms) }}</span>
+              @if (h.schema) {
+                <span>{{ h.schema }}</span>
+              }
+            </div>
+          </div>
+        } @empty {
+          <div class="empty">No history yet</div>
+        }
+      </div>
+    </aside>
+  }
+
+  @if (showClaude()) {
+    <q-claude-panel
+      class="claude"
+      [session]="session()"
+      [schema]="currentDb()"
+      [context]="editorContext"
+      (insert)="claudeInsert($event)"
+      (replace)="claudeReplace($event)"
+      (newTab)="claudeNewTab($event)"
+      (closed)="toggleClaude()"
+    />
+  }
+</div>

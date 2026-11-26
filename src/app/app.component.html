@@ -1,0 +1,60 @@
+<header class="titlebar">
+  <div class="brand" (click)="ws.activeId.set(null)" title="Connections">
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path d="M3 17.5 9 6l4.5 7.5L16 9.5l5 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+      <path d="M2.5 20.5h19" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+    </svg>
+    <span>Quarry</span>
+  </div>
+  <nav class="sessions">
+    <button class="stab home" [class.on]="!ws.activeId()" (click)="ws.activeId.set(null)">
+      <q-icon name="db" [size]="14" />Connections
+    </button>
+    @for (s of ws.sessions(); track s.id) {
+      <div class="stab" [class.on]="ws.activeId() === s.id" [style.--c]="s.conn.color || 'var(--accent)'" (click)="ws.activeId.set(s.id)" [title]="s.conn.user + '@' + s.conn.host">
+        <span class="sdot"></span>
+        <span class="sname">{{ s.conn.name }}</span>
+        @if (s.readOnly) {
+          <q-icon name="lock" [size]="11" class="slock" />
+        }
+        <button class="sclose" (click)="$event.stopPropagation(); ws.disconnect(s)" title="Disconnect"><q-icon name="x" [size]="11" /></button>
+      </div>
+    }
+    @if (ws.connecting()) {
+      <div class="stab connecting"><span class="spin"></span>Connecting…</div>
+    }
+  </nav>
+  <div class="actions">
+    <button class="btn ghost sm cmdk" (click)="palette.set(true)" title="Command palette">
+      <q-icon name="search" [size]="13" /><span>Search</span><kbd>Ctrl K</kbd>
+    </button>
+    <button class="btn ghost icon sm" (click)="toggleTheme()" [title]="settings.isDark() ? 'Light theme' : 'Dark theme'">
+      <q-icon [name]="settings.isDark() ? 'sun' : 'moon'" />
+    </button>
+    <button class="btn ghost icon sm" (click)="showSettings.set(true)" title="Settings (Ctrl+,)"><q-icon name="settings" /></button>
+  </div>
+</header>
+
+<main class="workspace">
+  <q-home [hidden]="!!ws.activeId()" />
+  @for (s of ws.sessions(); track s.id) {
+    <q-session-view [session]="s" [hidden]="ws.activeId() !== s.id" />
+  }
+</main>
+
+<q-dialog-host />
+@if (palette()) {
+  <q-palette (closed)="palette.set(false)" />
+}
+@if (showSettings()) {
+  <q-settings-panel (closed)="showSettings.set(false)" />
+}
+
+<div class="toasts">
+  @for (t of toast.toasts(); track t.id) {
+    <div class="toast" [class]="t.kind" (click)="toast.dismiss(t.id)">
+      <q-icon [name]="t.kind === 'error' ? 'x' : t.kind === 'success' ? 'check' : 'info'" [size]="14" />
+      <span class="selectable">{{ t.text }}</span>
+    </div>
+  }
+</div>

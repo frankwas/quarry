@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, output, signal } from '@ang
 import { AiProvider, errText } from '../core/api';
 import { AiService, CLAUDE_MODELS, PROVIDERS } from '../core/claude.service';
 import { SettingsService, Theme } from '../core/settings.service';
+import { KEYSTORE } from '../core/platform';
 import { Icon } from '../ui/icon';
 
 @Component({
@@ -56,7 +57,7 @@ import { Icon } from '../ui/icon';
           <div class="row">
             <div>
               <div class="t">Provider</div>
-              <div class="d">Used by the assistant panel in query tabs. Keys are stored in Windows Credential Manager.</div>
+              <div class="d">Used by the assistant panel in query tabs. Keys are stored in {{ keystore }}.</div>
             </div>
             <div class="seg">
               @for (p of providers; track p.id) {
@@ -146,7 +147,7 @@ import { Icon } from '../ui/icon';
             <span>Run all / selection</span><span><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Enter</kbd></span>
             <span>Explain</span><span><kbd>Ctrl</kbd> <kbd>E</kbd></span>
             <span>Format SQL</span><span><kbd>Shift</kbd> <kbd>Alt</kbd> <kbd>F</kbd></span>
-            <span>Autocomplete</span><span><kbd>Ctrl</kbd> <kbd>Space</kbd></span>
+            <span>Autocomplete</span><span data-raw-ctrl><kbd>Ctrl</kbd> <kbd>Space</kbd></span>
             <span>Toggle comment</span><span><kbd>Ctrl</kbd> <kbd>/</kbd></span>
             <span>Command palette</span><span><kbd>Ctrl</kbd> <kbd>K</kbd></span>
             <span>AI assistant (in a query tab)</span><span><kbd>Ctrl</kbd> <kbd>I</kbd></span>
@@ -173,6 +174,7 @@ import { Icon } from '../ui/icon';
   `,
 })
 export class SettingsPanel {
+  readonly keystore = KEYSTORE;
   readonly st = inject(SettingsService);
   readonly ai = inject(AiService);
   readonly models = CLAUDE_MODELS;

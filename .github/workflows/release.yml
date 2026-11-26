@@ -1,0 +1,57 @@
+name: Release
+
+# Builds installers for macOS (universal: Apple Silicon + Intel) and Windows
+# and attaches them to a draft GitHub release named after the app version.
+# Push a tag like v0.1.0, or run it by hand from the Actions tab.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+          - platform: windows-latest
+            args: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Mac builds are ad-hoc signed (see bundle.macOS in tauri.conf.json).
+          # For a Developer ID signed + notarized build, add APPLE_CERTIFICATE,
+          # APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID,
+          # APPLE_PASSWORD and APPLE_TEAM_ID here from repository secrets.
+        with:
+          tagName: v__VERSION__
+          releaseName: Quarry v__VERSION__
+          releaseBody: See the assets below for the Windows and macOS installers.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

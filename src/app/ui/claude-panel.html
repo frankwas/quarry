@@ -31,7 +31,7 @@
     <h3>Connect {{ ai.info().label }}</h3>
     <p class="muted">
       Paste {{ ai.provider() === 'openai' ? 'an OpenAI' : 'an Anthropic' }} API key so {{ ai.info().label }} can write and explain SQL for this connection. The key is
-      kept in Windows Credential Manager and only used from Quarry's backend.
+      kept in {{ keystore }} and only used from Quarry's backend.
     </p>
     <input
       class="input mono"

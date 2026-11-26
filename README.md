@@ -7,7 +7,7 @@ Tauri 2 (Rust) core, Angular 21 UI.
 
 | Area | Features |
 | --- | --- |
-| Connections | Saved profiles with colour and group, TLS modes (preferred / required / verify / off), SSH tunnel (key or password, trust-on-first-use host keys), **read-only** flag that blocks writes. Passwords are kept in Windows Credential Manager. |
+| Connections | Saved profiles with colour and group, TLS modes (preferred / required / verify / off), SSH tunnel (key or password, trust-on-first-use host keys), **read-only** flag that blocks writes. Passwords are kept in Windows Credential Manager or the macOS Keychain. |
 | SQL editor | CodeMirror 6 with MySQL highlighting and schema-aware autocomplete (tables and columns of the current schema). Run the statement at the cursor (Ctrl+Enter), run all or the selection (Ctrl+Shift+Enter), cancel a running query (KILL QUERY), EXPLAIN (FORMAT=TREE on 8.0.16+), formatter, per-connection history, open/save `.sql`, confirmation before UPDATE/DELETE without WHERE. Each tab has its own connection, so `USE`, session variables and transactions behave as they would in a terminal. |
 | Results grid | Virtualised (handles thousands of rows), keyboard navigation, range selection, copy as TSV / CSV / JSON / INSERT / Markdown / IN-list, value inspector with a JSON view. **Results are editable** when they come from a single table that has a key; changes are reviewed as SQL and applied in one transaction. |
 | Schema browser | Schemas → tables / views / routines / triggers → columns, filter, context menus (browse, SELECT, alter, info, rename, duplicate, truncate, drop, copy DDL). |
@@ -16,18 +16,48 @@ Tauri 2 (Rust) core, Angular 21 UI.
 | ER diagram | Auto-laid-out diagram of a schema (dagre). Drag tables (positions are saved), pan and zoom, keys-only mode, highlights related tables on hover, SVG export. |
 | Import / export | SQL dump of a whole schema or chosen tables (structure, data, routines, triggers, from one consistent snapshot). Run SQL files of any size (streamed, DELIMITER-aware). CSV import with column mapping. CSV export of any table or query. |
 | Admin | Live server status (QPS, reads and writes, threads, network, buffer pool), process list with kill, users and grants (create, password, lock, grant presets, click to revoke), global and session variables (edit with SET). |
-| AI assistant | An assistant panel in every query tab (Ctrl+I), backed by **Claude** or **OpenAI**, each with its own API key. It knows the current schema's structure and can look up DDL with tools. Optionally it can run read-only SELECTs (50 rows, inside a `READ ONLY` transaction). Replies stream in, and SQL blocks have Insert / Replace / New tab buttons. Failed statements get a **Fix with…** button. The assistant never runs writes: you run its scripts through the normal path, with read-only and no-WHERE protection still applying. Keys are kept in Windows Credential Manager and used only by the Rust core. Provider, model (Claude Opus 5.5 / Sonnet 5.5 / Haiku 5.5, or any chat model on your OpenAI account) and effort are set in Settings. |
-| Everywhere | Light and dark themes, command palette (Ctrl+K) to jump to any table or tool, tabs you can drag to reorder. |
+| AI assistant | An assistant panel in every query tab (Ctrl+I), backed by **Claude** or **OpenAI**, each with its own API key. It knows the current schema's structure and can look up DDL with tools. Optionally it can run read-only SELECTs (50 rows, inside a `READ ONLY` transaction). Replies stream in, and SQL blocks have Insert / Replace / New tab buttons. Failed statements get a **Fix with…** button. The assistant never runs writes: you run its scripts through the normal path, with read-only and no-WHERE protection still applying. Keys are kept in Windows Credential Manager or the macOS Keychain and used only by the Rust core. Provider, model (Claude Opus 5.5 / Sonnet 5.5 / Haiku 5.5, or any chat model on your OpenAI account) and effort are set in Settings. |
+| Everywhere | Light and dark themes, command palette (Ctrl/⌘+K) to jump to any table or tool, tabs you can drag to reorder. Runs on Windows and macOS. |
+
+## Install
+
+Download from [Releases](https://github.com/frankwas/quarry/releases):
+
+| Platform | File |
+| --- | --- |
+| Windows 10/11 | `Quarry_x.y.z_x64-setup.exe` (or the `.msi`) |
+| macOS 10.15+ (Apple Silicon and Intel) | `Quarry_x.y.z_universal.dmg` |
+
+The builds aren't code-signed by a paid certificate yet, so the OS warns the first time:
+
+- **Windows:** SmartScreen says "Windows protected your PC". Click **More info → Run anyway**.
+- **macOS:** open the `.dmg` and drag Quarry to Applications. The first launch is blocked as coming from an unidentified developer. Open **System Settings → Privacy & Security** and click **Open Anyway** (on older macOS, right-click the app and choose **Open**). If macOS says the app "is damaged", clear the download quarantine flag:
+
+  ```bash
+  xattr -dr com.apple.quarantine /Applications/Quarry.app
+  ```
+
+Saved passwords and API keys go into Windows Credential Manager or the macOS Keychain.
 
 ## Develop
 
-Needs Node 22.12+, Rust (stable MSVC), and WebView2, which ships with Windows 11.
+Needs Node 22.12+ and Rust (stable). On Windows, WebView2 (ships with Windows 11) and the MSVC build tools. On macOS, the Xcode command-line tools (`xcode-select --install`).
 
 ```bash
 npm install
 npm run tauri dev        # hot-reloading app
-npm run tauri build      # release installer in src-tauri/target/release/bundle
+npm run tauri build      # installers in src-tauri/target/release/bundle
 ```
+
+### Releases
+
+`.github/workflows/release.yml` builds the macOS (universal) and Windows installers on GitHub's runners and attaches them to a draft release. To cut one, bump `version` in `src-tauri/tauri.conf.json` and push a matching tag:
+
+```bash
+git tag v0.1.1 && git push origin v0.1.1
+```
+
+Then publish the draft on the Releases page. For a notarized Mac build without the Gatekeeper warning, add Apple Developer ID secrets (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`) and pass them as env to the `tauri-action` step.
 
 A throwaway MySQL with a sample `shop` schema:
 

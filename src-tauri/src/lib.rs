@@ -308,6 +308,21 @@ async fn write_text_file(path: String, content: String) -> Res<()> {
     tokio::fs::write(&path, content).await.map_err(e)
 }
 
+/// The app identifier was `dev.quarry.app` before macOS support (macOS
+/// dislikes identifiers ending in .app). Carry saved connections over from
+/// the old config folder once. Secrets live in the OS key store under a
+/// fixed service name, so they need no migration.
+fn migrate_old_config(dir: &std::path::Path) {
+    let Some(old) = dir.parent().map(|p| p.join("dev.quarry.app")) else { return };
+    if dir.join("connections.json").exists() || !old.join("connections.json").exists() {
+        return;
+    }
+    let _ = std::fs::create_dir_all(dir);
+    for f in ["connections.json", "known_hosts.json"] {
+        let _ = std::fs::copy(old.join(f), dir.join(f));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -315,6 +330,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let dir = app.path().app_config_dir()?;
+            migrate_old_config(&dir);
             let store = Store::load(dir.clone())?;
             app.manage(AppState {
                 store: Mutex::new(store),

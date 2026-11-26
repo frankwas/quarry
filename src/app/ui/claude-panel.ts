@@ -4,6 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { AiEvent, AiProvider, api, errText, uid } from '../core/api';
 import { AiService, CLAUDE_MODELS, PROVIDERS } from '../core/claude.service';
 import { SettingsService } from '../core/settings.service';
+import { KEYSTORE } from '../core/platform';
 import { OpenSession } from '../core/workspace.service';
 import { Icon } from './icon';
 import { renderMarkdown, Segment } from './markdown';
@@ -36,6 +37,7 @@ export interface EditorContext {
   styleUrl: './claude-panel.css',
 })
 export class ClaudePanel {
+  readonly keystore = KEYSTORE;
   readonly ai = inject(AiService);
   readonly settings = inject(SettingsService);
 

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, ou
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { api, errText } from '../core/api';
 import { ConnConfig, ConnSummary, SslMode } from '../core/models';
+import { KEYSTORE } from '../core/platform';
 import { Icon } from '../ui/icon';
 
 export const CONN_COLORS = ['#0b7d6e', '#2f6feb', '#8a3ab9', '#c63d3d', '#d9822b', '#b7791f', '#2f8a3e', '#5f6b7a'];
@@ -132,7 +133,7 @@ export const CONN_COLORS = ['#0b7d6e', '#2f6feb', '#8a3ab9', '#c63d3d', '#d9822b
 
           <div class="section-title">Safety</div>
           <label class="check"><input type="checkbox" [checked]="c().readOnly" (change)="set('readOnly', !c().readOnly)" />Read-only — block writes from the editor and grid</label>
-          <p class="hint muted">Passwords are stored in Windows Credential Manager, never in Quarry's settings file.</p>
+          <p class="hint muted">Passwords are stored in {{ keystore }}, never in Quarry's settings file.</p>
 
           @if (testResult(); as t) {
             <div class="test" [class.bad]="!t.ok">
@@ -177,6 +178,7 @@ export const CONN_COLORS = ['#0b7d6e', '#2f6feb', '#8a3ab9', '#c63d3d', '#d9822b
   `,
 })
 export class ConnForm implements OnInit {
+  readonly keystore = KEYSTORE;
   readonly initial = input<ConnSummary | null>(null);
   readonly saved = output<{ conn: ConnSummary; connect: boolean }>();
   readonly cancel = output<void>();

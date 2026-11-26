@@ -3,6 +3,7 @@ import { api, errText } from '../core/api';
 import { DialogService } from '../core/dialog.service';
 import { ConnSummary } from '../core/models';
 import { SettingsService } from '../core/settings.service';
+import { KEYSTORE } from '../core/platform';
 import { ToastService } from '../core/toast.service';
 import { WorkspaceService } from '../core/workspace.service';
 import { Icon } from '../ui/icon';
@@ -82,7 +83,7 @@ import { ConnForm } from './conn-form';
             <div class="first card">
               <q-icon name="db" [size]="34" />
               <h2>Add your first MySQL connection</h2>
-              <p class="muted">Local, remote over TLS, or through an SSH bastion. Passwords go into Windows Credential Manager.</p>
+              <p class="muted">Local, remote over TLS, or through an SSH bastion. Passwords go into {{ keystore }}.</p>
               <button class="btn primary" (click)="edit.set(blank())"><q-icon name="plus" />New connection</button>
             </div>
           } @else {
@@ -136,6 +137,7 @@ import { ConnForm } from './conn-form';
   `,
 })
 export class Home implements OnInit {
+  readonly keystore = KEYSTORE;
   readonly ws = inject(WorkspaceService);
   private dialog = inject(DialogService);
   private toast = inject(ToastService);

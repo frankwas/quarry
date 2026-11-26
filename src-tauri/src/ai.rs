@@ -103,8 +103,10 @@ pub struct ChatOptions {
     pub schema: Option<String>,
 }
 
+/// `rename_all` only renames the variant tags; `rename_all_fields` is what
+/// turns `chat_id` / `is_error` into the `chatId` / `isError` the UI reads.
 #[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
 pub(crate) enum AiEvent<'a> {
     Text { chat_id: &'a str, text: &'a str },
     Thinking { chat_id: &'a str, text: &'a str },
@@ -713,6 +715,15 @@ mod tests {
     fn echo_keeps_everything_without_fallback() {
         let content = vec![json!({"type": "thinking", "thinking": "a", "signature": "s"}), json!({"type": "tool_use", "id": "t", "name": "x", "input": {}})];
         assert_eq!(echo_content(&content).len(), 2);
+    }
+
+    #[test]
+    fn events_use_camel_case_fields() {
+        let v = serde_json::to_value(AiEvent::ToolResult { chat_id: "c", id: "i", summary: "s", is_error: true }).unwrap();
+        assert_eq!(v["kind"], "toolResult");
+        assert_eq!(v["chatId"], "c");
+        assert_eq!(v["isError"], true);
+        assert!(v.get("chat_id").is_none());
     }
 
     #[test]

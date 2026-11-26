@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
 import { UnlistenFn } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { AiEvent, api, errText, uid } from '../core/api';
-import { CLAUDE_MODELS, ClaudeService } from '../core/claude.service';
+import { AiEvent, AiProvider, api, errText, uid } from '../core/api';
+import { AiService, CLAUDE_MODELS, PROVIDERS } from '../core/claude.service';
 import { SettingsService } from '../core/settings.service';
 import { OpenSession } from '../core/workspace.service';
 import { Icon } from './icon';
@@ -36,7 +36,7 @@ export interface EditorContext {
   styleUrl: './claude-panel.css',
 })
 export class ClaudePanel {
-  readonly claude = inject(ClaudeService);
+  readonly ai = inject(AiService);
   readonly settings = inject(SettingsService);
 
   readonly session = input.required<OpenSession>();
@@ -52,6 +52,7 @@ export class ClaudePanel {
   private box = viewChild<ElementRef<HTMLTextAreaElement>>('box');
 
   readonly models = CLAUDE_MODELS;
+  readonly providers = PROVIDERS;
   readonly turns = signal<ChatTurn[]>([]);
   readonly draft = signal('');
   readonly running = signal(false);
@@ -65,7 +66,7 @@ export class ClaudePanel {
   private chatId = uid('chat');
   private unlisten: UnlistenFn | null = null;
 
-  readonly modelLabel = computed(() => this.models.find((m) => m.id === this.settings.s().claudeModel)?.label ?? this.settings.s().claudeModel);
+  readonly modelLabel = computed(() => this.models.find((m) => m.id === this.ai.model())?.label ?? this.ai.model());
 
   readonly suggestions = [
     'Write a query that…',
@@ -90,7 +91,7 @@ export class ClaudePanel {
     this.savingKey.set(true);
     this.keyError.set(null);
     try {
-      await this.claude.save(k);
+      await this.ai.save(this.ai.provider(), k);
       this.keyDraft.set('');
     } catch (e) {
       this.keyError.set(errText(e));
@@ -100,7 +101,21 @@ export class ClaudePanel {
   }
 
   openConsole() {
-    openUrl('https://console.anthropic.com/settings/keys');
+    openUrl(this.ai.info().keysUrl);
+  }
+
+  setProvider(p: AiProvider) {
+    if (this.running() || p === this.ai.provider()) return;
+    this.settings.patch({ aiProvider: p });
+    this.keyDraft.set('');
+    this.keyError.set(null);
+    // Histories are provider-specific, so switching starts a fresh chat.
+    this.newChat();
+  }
+
+  setModel(id: string) {
+    if (this.ai.provider() === 'openai') this.settings.patch({ openaiModel: id });
+    else this.settings.patch({ claudeModel: id });
   }
 
   // ------------------------------------------------------------ chat
@@ -132,7 +147,8 @@ export class ClaudePanel {
 
   async send(withEditor = this.includeEditor()) {
     const question = this.draft().trim();
-    if (!question || this.running() || !this.claude.hasKey()) return;
+    if (!question || this.running() || !this.ai.hasKey()) return;
+
 
     const ctx = this.context()();
     const blocks: string[] = [];
@@ -150,7 +166,8 @@ export class ClaudePanel {
     const s = this.settings.s();
     try {
       const r = await api.aiChat(this.session().id, this.chatId, this.history, content, {
-        model: s.claudeModel,
+        provider: s.aiProvider,
+        model: this.ai.model(),
         effort: s.claudeEffort,
         allowQueries: s.claudeAllowQueries,
         schema: this.schema(),
@@ -164,7 +181,7 @@ export class ClaudePanel {
     } catch (e) {
       const msg = errText(e);
       this.patchLast((turn) => turn.parts.push({ type: 'notice', text: msg === 'Stopped' ? 'Stopped.' : msg, tone: msg === 'Stopped' ? 'info' : 'error' }));
-      if (msg !== 'Stopped' && /api key/i.test(msg)) this.claude.refresh();
+      if (msg !== 'Stopped' && /api key/i.test(msg)) this.ai.refresh();
     } finally {
       this.running.set(false);
       this.scroll();

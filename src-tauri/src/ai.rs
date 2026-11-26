@@ -21,34 +21,46 @@ use tauri::{AppHandle, Emitter};
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2026-10-21";
-const KEY_ID: &str = "anthropic";
-const MAX_TURNS: usize = 16;
+pub(crate) const MAX_TURNS: usize = 16;
 const SCHEMA_BUDGET_CHARS: usize = 120_000;
 
-pub fn set_key(key: &str) -> Result<()> {
-    store::set_secret(KEY_ID, "api_key", key.trim())
+/// Credential-store entry for a provider ("anthropic" | "openai").
+fn key_id(provider: &str) -> Result<&'static str> {
+    match provider {
+        "anthropic" | "" => Ok("anthropic"),
+        "openai" => Ok("openai"),
+        other => bail!("unknown AI provider {other}"),
+    }
 }
 
-pub fn has_key() -> bool {
-    store::has_secret(KEY_ID, "api_key")
+pub fn set_key(provider: &str, key: &str) -> Result<()> {
+    store::set_secret(key_id(provider)?, "api_key", key.trim())
 }
 
-fn key() -> Result<String> {
-    store::get_secret(KEY_ID, "api_key").ok_or_else(|| anyhow!("No Claude API key saved. Add one in Settings → Claude."))
+pub fn has_key(provider: &str) -> bool {
+    key_id(provider).map(|id| store::has_secret(id, "api_key")).unwrap_or(false)
 }
 
-fn client() -> Result<reqwest::Client> {
+pub(crate) fn key(provider: &str) -> Result<String> {
+    let label = if provider == "openai" { "OpenAI" } else { "Claude" };
+    store::get_secret(key_id(provider)?, "api_key").ok_or_else(|| anyhow!("No {label} API key saved. Add one in Settings."))
+}
+
+pub(crate) fn client() -> Result<reqwest::Client> {
     Ok(reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(20))
         .build()?)
 }
 
-/// Cheap key check: list models (no tokens spent).
-pub async fn test_key(candidate: Option<String>) -> Result<Vec<String>> {
+/// Cheap key check: list models (no tokens spent). Returns usable model ids.
+pub async fn test_key(provider: &str, candidate: Option<String>) -> Result<Vec<String>> {
     let k = match candidate.filter(|s| !s.trim().is_empty()) {
         Some(s) => s.trim().to_string(),
-        None => key()?,
+        None => key(provider)?,
     };
+    if provider == "openai" {
+        return crate::ai_openai::list_models(&k).await;
+    }
     let resp = client()?
         .get("https://api.anthropic.com/v1/models?limit=100")
         .header("x-api-key", k)
@@ -58,7 +70,7 @@ pub async fn test_key(candidate: Option<String>) -> Result<Vec<String>> {
     let status = resp.status();
     let body: Value = resp.json().await.unwrap_or(Value::Null);
     if !status.is_success() {
-        bail!("{}", api_error_text(status.as_u16(), &body));
+        bail!("{}", api_error_text("Anthropic", status.as_u16(), &body));
     }
     Ok(body["data"]
         .as_array()
@@ -66,14 +78,14 @@ pub async fn test_key(candidate: Option<String>) -> Result<Vec<String>> {
         .unwrap_or_default())
 }
 
-fn api_error_text(status: u16, body: &Value) -> String {
+pub(crate) fn api_error_text(vendor: &str, status: u16, body: &Value) -> String {
     let msg = body["error"]["message"].as_str().unwrap_or("request failed");
     match status {
         401 => format!("Invalid API key (401): {msg}"),
         403 => format!("Permission denied (403): {msg}"),
-        429 => format!("Rate limited (429): {msg}"),
-        529 => format!("Claude is overloaded right now (529). Try again shortly."),
-        s if s >= 500 => format!("Anthropic server error ({s}): {msg}"),
+        429 => format!("Rate limited or out of quota (429): {msg}"),
+        529 => format!("{vendor} is overloaded right now (529). Try again shortly."),
+        s if s >= 500 => format!("{vendor} server error ({s}): {msg}"),
         s => format!("API error ({s}): {msg}"),
     }
 }
@@ -83,6 +95,8 @@ fn api_error_text(status: u16, body: &Value) -> String {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatOptions {
+    #[serde(default)]
+    pub provider: String,
     pub model: String,
     pub effort: String,
     pub allow_queries: bool,
@@ -91,7 +105,7 @@ pub struct ChatOptions {
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase", tag = "kind")]
-enum AiEvent<'a> {
+pub(crate) enum AiEvent<'a> {
     Text { chat_id: &'a str, text: &'a str },
     Thinking { chat_id: &'a str, text: &'a str },
     ToolStart { chat_id: &'a str, id: &'a str, name: &'a str, input: &'a Value },
@@ -119,7 +133,7 @@ pub struct Usage {
     pub cache_write_tokens: u64,
 }
 
-fn tools() -> Value {
+pub(crate) fn tools() -> Value {
     json!([
         {
             "name": "list_tables",
@@ -161,7 +175,7 @@ fn tools() -> Value {
     ])
 }
 
-fn system_prompt(server_version: &str, schema: Option<&str>, allow_queries: bool) -> String {
+pub(crate) fn system_prompt(server_version: &str, schema: Option<&str>, allow_queries: bool) -> String {
     format!(
         "You are the SQL assistant built into Quarry, a desktop MySQL client. The user is working on a MySQL server, version {server_version}{schema_line}.\n\n\
 How you work:\n\
@@ -182,7 +196,7 @@ How you work:\n\
 
 /// Compact overview of a schema's tables for the system prompt. Says so
 /// explicitly when it had to stop listing columns.
-async fn schema_overview(conn: &mut Conn, schema: &str) -> Result<String> {
+pub(crate) async fn schema_overview(conn: &mut Conn, schema: &str) -> Result<String> {
     let cols: Vec<(String, String, String, String, String)> = conn
         .exec(
             "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY, IS_NULLABLE FROM information_schema.COLUMNS \
@@ -267,7 +281,7 @@ struct Turn {
 async fn stream_turn(app: &AppHandle, chat_id: &str, body: &Value, uses_fallbacks: bool, cancel: &AtomicBool) -> Result<Turn> {
     let mut req = client()?
         .post(API_URL)
-        .header("x-api-key", key()?)
+        .header("x-api-key", key("anthropic")?)
         .header("anthropic-version", API_VERSION)
         .header("content-type", "application/json");
     if uses_fallbacks {
@@ -277,7 +291,7 @@ async fn stream_turn(app: &AppHandle, chat_id: &str, body: &Value, uses_fallback
     let status = resp.status();
     if !status.is_success() {
         let body: Value = resp.json().await.unwrap_or(Value::Null);
-        bail!("{}", api_error_text(status.as_u16(), &body));
+        bail!("{}", api_error_text("Anthropic", status.as_u16(), &body));
     }
 
     let mut turn = Turn {
@@ -420,10 +434,10 @@ fn echo_content(content: &[Value]) -> Vec<Value> {
 
 // --------------------------------------------------------------- tools
 
-struct ToolCall {
-    id: String,
-    name: String,
-    input: Result<Value, String>,
+pub(crate) struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub input: Result<Value, String>,
 }
 
 fn validate(name: &str, input: &Value) -> Result<(), String> {
@@ -447,7 +461,7 @@ fn validate(name: &str, input: &Value) -> Result<(), String> {
     }
 }
 
-async fn run_tool(session: &Session, conn: &mut Conn, default_schema: Option<&str>, allow_queries: bool, call: &ToolCall) -> (String, bool, String) {
+pub(crate) async fn run_tool(session: &Session, conn: &mut Conn, default_schema: Option<&str>, allow_queries: bool, call: &ToolCall) -> (String, bool, String) {
     let input = match &call.input {
         Ok(v) => v,
         Err(raw) => {
@@ -558,6 +572,9 @@ pub async fn chat(
     user_content: Value,
     opts: ChatOptions,
 ) -> Result<ChatResult> {
+    if opts.provider == "openai" {
+        return crate::ai_openai::chat(app, session, chat_id, cancel, messages, user_content, opts).await;
+    }
     let mut conn = session.pool.get_conn().await?;
     let schema = opts.schema.clone().filter(|s| !s.is_empty());
     let overview = match &schema {

@@ -1,4 +1,5 @@
 mod ai;
+mod ai_openai;
 mod db;
 mod sqlsplit;
 mod ssh;
@@ -257,19 +258,27 @@ async fn task_cancel(state: State<'_, AppState>, task_id: String) -> Res<()> {
 
 // ------------------------------------------------------------ Claude
 
-#[tauri::command]
-async fn ai_has_key() -> Res<bool> {
-    Ok(tokio::task::spawn_blocking(ai::has_key).await.map_err(e)?)
+#[derive(Serialize)]
+struct KeyStatus {
+    anthropic: bool,
+    openai: bool,
 }
 
 #[tauri::command]
-async fn ai_set_key(key: String) -> Res<()> {
-    tokio::task::spawn_blocking(move || ai::set_key(&key)).await.map_err(e)?.map_err(ae)
+async fn ai_key_status() -> Res<KeyStatus> {
+    tokio::task::spawn_blocking(|| KeyStatus { anthropic: ai::has_key("anthropic"), openai: ai::has_key("openai") })
+        .await
+        .map_err(e)
 }
 
 #[tauri::command]
-async fn ai_test_key(key: Option<String>) -> Res<Vec<String>> {
-    ai::test_key(key).await.map_err(ae)
+async fn ai_set_key(provider: String, key: String) -> Res<()> {
+    tokio::task::spawn_blocking(move || ai::set_key(&provider, &key)).await.map_err(e)?.map_err(ae)
+}
+
+#[tauri::command]
+async fn ai_test_key(provider: String, key: Option<String>) -> Res<Vec<String>> {
+    ai::test_key(&provider, key).await.map_err(ae)
 }
 
 #[tauri::command]
@@ -338,7 +347,7 @@ pub fn run() {
             task_cancel,
             read_text_file,
             write_text_file,
-            ai_has_key,
+            ai_key_status,
             ai_set_key,
             ai_test_key,
             ai_chat,

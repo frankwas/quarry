@@ -15,7 +15,7 @@
   <button class="btn ghost icon sm" (click)="save()" title="Save (Ctrl+S)"><q-icon name="save" /></button>
   <button class="btn ghost icon sm" [class.on]="showHistory()" (click)="showHistory.set(!showHistory())" title="Query history"><q-icon name="history" /></button>
   <span class="grow"></span>
-  <button class="btn sm claude-btn" [class.on]="showClaude()" (click)="toggleClaude()" title="Ask Claude (Ctrl+I)"><q-icon name="sparkle" />Claude</button>
+  <button class="btn sm claude-btn" [class.on]="showClaude()" (click)="toggleClaude()" [title]="'Ask ' + ai.info().label + ' (Ctrl+I)'"><q-icon name="sparkle" />{{ ai.info().label }}</button>
   <label class="db-pick" title="Default schema for this editor (USE)">
     <q-icon name="db" [size]="13" />
     <select class="input sm" [value]="currentDb() ?? ''" (change)="useSchema($any($event.target).value)">
@@ -102,7 +102,7 @@
                   <code class="msg-sql">{{ m.sql.length > 400 ? m.sql.slice(0, 400) + '…' : m.sql }}</code>
                   <div class="msg-sum">{{ stmtSummary(m) }}</div>
                   @if (m.error) {
-                    <button class="btn sm fix" (click)="fixWithClaude(m.sql, m.error)"><q-icon name="sparkle" />Fix with Claude</button>
+                    <button class="btn sm fix" (click)="fixWithClaude(m.sql, m.error)"><q-icon name="sparkle" />Fix with {{ ai.info().label }}</button>
                   }
                 </div>
                 <span class="msg-time">{{ fmtMs(m.elapsedMs) }}</span>

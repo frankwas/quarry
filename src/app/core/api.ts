@@ -50,9 +50,9 @@ export const api = {
     invoke<{ rows: number }>('import_csv', { sessionId, taskId, options }),
   taskCancel: (taskId: string) => invoke<void>('task_cancel', { taskId }),
 
-  aiHasKey: () => invoke<boolean>('ai_has_key'),
-  aiSetKey: (key: string) => invoke<void>('ai_set_key', { key }),
-  aiTestKey: (key: string | null) => invoke<string[]>('ai_test_key', { key }),
+  aiKeyStatus: () => invoke<Record<AiProvider, boolean>>('ai_key_status'),
+  aiSetKey: (provider: AiProvider, key: string) => invoke<void>('ai_set_key', { provider, key }),
+  aiTestKey: (provider: AiProvider, key: string | null) => invoke<string[]>('ai_test_key', { provider, key }),
   aiChat: (sessionId: string, chatId: string, messages: unknown[], userContent: string, options: AiOptions) =>
     invoke<AiResult>('ai_chat', { sessionId, chatId, messages, userContent, options }),
   onAi: (fn: (e: AiEvent) => void): Promise<UnlistenFn> => listen<AiEvent>('ai-event', (e) => fn(e.payload)),
@@ -75,7 +75,10 @@ export interface DumpOptions {
   path: string;
 }
 
+export type AiProvider = 'anthropic' | 'openai';
+
 export interface AiOptions {
+  provider: AiProvider;
   model: string;
   effort: string;
   allowQueries: boolean;

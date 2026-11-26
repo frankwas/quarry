@@ -16,7 +16,7 @@ Tauri 2 (Rust) core, Angular 21 UI.
 | ER diagram | Auto-laid-out diagram of a schema (dagre). Drag tables (positions are saved), pan and zoom, keys-only mode, highlights related tables on hover, SVG export. |
 | Import / export | SQL dump of a whole schema or chosen tables (structure, data, routines, triggers, from one consistent snapshot). Run SQL files of any size (streamed, DELIMITER-aware). CSV import with column mapping. CSV export of any table or query. |
 | Admin | Live server status (QPS, reads and writes, threads, network, buffer pool), process list with kill, users and grants (create, password, lock, grant presets, click to revoke), global and session variables (edit with SET). |
-| Claude | A Claude panel in every query tab (Ctrl+I). It knows the current schema's structure and can look up DDL with tools. Optionally it can run read-only SELECTs (50 rows, inside a `READ ONLY` transaction). Replies stream in, and SQL blocks have Insert / Replace / New tab buttons. Failed statements get a **Fix with Claude** button. Claude never runs writes: you run its scripts through the normal path, with read-only and no-WHERE protection still applying. The API key is kept in Windows Credential Manager and used only by the Rust core. Model (Opus 5.5 by default, Sonnet 5.5, Haiku 5.5) and effort are set in Settings. |
+| AI assistant | An assistant panel in every query tab (Ctrl+I), backed by **Claude** or **OpenAI**, each with its own API key. It knows the current schema's structure and can look up DDL with tools. Optionally it can run read-only SELECTs (50 rows, inside a `READ ONLY` transaction). Replies stream in, and SQL blocks have Insert / Replace / New tab buttons. Failed statements get a **Fix with…** button. The assistant never runs writes: you run its scripts through the normal path, with read-only and no-WHERE protection still applying. Keys are kept in Windows Credential Manager and used only by the Rust core. Provider, model (Claude Opus 5.5 / Sonnet 5.5 / Haiku 5.5, or any chat model on your OpenAI account) and effort are set in Settings. |
 | Everywhere | Light and dark themes, command palette (Ctrl+K) to jump to any table or tool, tabs you can drag to reorder. |
 
 ## Develop
@@ -46,7 +46,8 @@ src-tauri/src/
   db.rs         sessions, editor connections, query execution, batches
   transfer.rs   dump / SQL file / CSV jobs with progress + cancel
   sqlsplit.rs   statement splitter (quotes, comments, DELIMITER)
-  ai.rs         Claude agent loop (Messages API over SSE), schema tools, key storage
+  ai.rs         assistant: Claude agent loop (Messages API over SSE), schema tools, key storage
+  ai_openai.rs  assistant: OpenAI agent loop (Chat Completions, streamed function calls)
 src/app/
   core/         api wrappers, metadata cache, SQL + DDL generation, workspace state
   ui/           data grid, SQL editor, value inspector, icons

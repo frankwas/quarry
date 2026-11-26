@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, output, signal } from '@angular/core';
-import { errText } from '../core/api';
-import { CLAUDE_MODELS, ClaudeService } from '../core/claude.service';
+import { AiProvider, errText } from '../core/api';
+import { AiService, CLAUDE_MODELS, PROVIDERS } from '../core/claude.service';
 import { SettingsService, Theme } from '../core/settings.service';
 import { Icon } from '../ui/icon';
 
@@ -52,36 +52,74 @@ import { Icon } from '../ui/icon';
             </div>
             <input type="checkbox" class="toggle" [checked]="st.s().confirmUnsafeWrites" (change)="st.patch({ confirmUnsafeWrites: !st.s().confirmUnsafeWrites })" />
           </div>
-          <div class="section-title keys-title">Claude</div>
+          <div class="section-title keys-title">AI assistant</div>
           <div class="row">
             <div>
-              <div class="t">API key</div>
-              <div class="d">
-                @if (claude.hasKey()) {
-                  Saved in Windows Credential Manager.
-                } @else {
-                  Not set. Create one at console.anthropic.com → API keys.
-                }
-              </div>
+              <div class="t">Provider</div>
+              <div class="d">Used by the assistant panel in query tabs. Keys are stored in Windows Credential Manager.</div>
             </div>
-            @if (claude.hasKey()) {
-              <button class="btn sm" (click)="claude.remove()">Remove key</button>
+            <div class="seg">
+              @for (p of providers; track p.id) {
+                <button [class.on]="st.s().aiProvider === p.id" (click)="st.patch({ aiProvider: p.id })">{{ p.label }}</button>
+              }
+            </div>
+          </div>
+          @for (p of providers; track p.id) {
+            <div class="row">
+              <div>
+                <div class="t">{{ p.label }} API key</div>
+                <div class="d">
+                  @if (ai.keys()?.[p.id]) {
+                    Saved.
+                  } @else {
+                    Not set. Create one at {{ p.keysUrl.replace('https://', '') }}.
+                  }
+                </div>
+              </div>
+              @if (ai.keys()?.[p.id]) {
+                <button class="btn sm" (click)="ai.remove(p.id)">Remove key</button>
+              }
+            </div>
+            <div class="row key-row">
+              <input
+                class="input mono"
+                type="password"
+                [placeholder]="(ai.keys()?.[p.id] ? 'Replace with a new key ' : '') + (p.id === 'openai' ? 'sk-…' : 'sk-ant-…')"
+                [value]="keyDrafts()[p.id]"
+                (input)="setDraft(p.id, $any($event.target).value)"
+                spellcheck="false"
+              />
+              <button class="btn primary sm" [disabled]="!keyDrafts()[p.id].trim() || savingKey() === p.id" (click)="saveKey(p.id)">Verify & save</button>
+            </div>
+            @if (keyMsg()?.provider === p.id) {
+              <div class="key-msg" [class.danger-text]="keyMsg()!.bad" [class.ok-text]="!keyMsg()!.bad">{{ keyMsg()!.text }}</div>
             }
-          </div>
-          <div class="row key-row">
-            <input class="input mono" type="password" [placeholder]="claude.hasKey() ? 'Replace with a new key (sk-ant-…)' : 'sk-ant-…'" [value]="keyDraft()" (input)="keyDraft.set($any($event.target).value)" spellcheck="false" />
-            <button class="btn primary sm" [disabled]="!keyDraft().trim() || savingKey()" (click)="saveKey()">Verify & save</button>
-          </div>
-          @if (keyMsg()) {
-            <div class="key-msg" [class.danger-text]="keyMsg()!.bad" [class.ok-text]="!keyMsg()!.bad">{{ keyMsg()!.text }}</div>
           }
           <div class="row">
-            <div><div class="t">Model</div></div>
+            <div><div class="t">Claude model</div></div>
             <select class="input sel" [value]="st.s().claudeModel" (change)="st.patch({ claudeModel: $any($event.target).value })">
               @for (m of models; track m.id) {
                 <option [value]="m.id" [selected]="m.id === st.s().claudeModel">{{ m.label }} — {{ m.hint }}</option>
               }
             </select>
+          </div>
+          <div class="row">
+            <div>
+              <div class="t">OpenAI model</div>
+              <div class="d">Listed from your OpenAI account.</div>
+            </div>
+            @if (ai.openaiModels().length) {
+              <select class="input sel" [value]="st.s().openaiModel" (change)="st.patch({ openaiModel: $any($event.target).value })">
+                @for (m of ai.openaiModels(); track m) {
+                  <option [value]="m" [selected]="m === st.s().openaiModel">{{ m }}</option>
+                }
+              </select>
+            } @else {
+              <input class="input sel mono" placeholder="model id" [value]="st.s().openaiModel" (change)="st.patch({ openaiModel: $any($event.target).value })" />
+            }
+            @if (ai.keys()?.openai) {
+              <button class="btn ghost icon sm" (click)="reloadModels()" title="Reload model list"><q-icon name="refresh" /></button>
+            }
           </div>
           <div class="row">
             <div>
@@ -96,8 +134,8 @@ import { Icon } from '../ui/icon';
           </div>
           <div class="row">
             <div>
-              <div class="t">Let Claude run read-only queries</div>
-              <div class="d">SELECT/SHOW/EXPLAIN only, 50 rows max, inside a READ ONLY transaction. Results are sent to Anthropic.</div>
+              <div class="t">Let the assistant run read-only queries</div>
+              <div class="d">SELECT/SHOW/EXPLAIN only, 50 rows max, inside a READ ONLY transaction. Results are sent to the selected provider.</div>
             </div>
             <input type="checkbox" class="toggle" [checked]="st.s().claudeAllowQueries" (change)="st.patch({ claudeAllowQueries: !st.s().claudeAllowQueries })" />
           </div>
@@ -111,7 +149,7 @@ import { Icon } from '../ui/icon';
             <span>Autocomplete</span><span><kbd>Ctrl</kbd> <kbd>Space</kbd></span>
             <span>Toggle comment</span><span><kbd>Ctrl</kbd> <kbd>/</kbd></span>
             <span>Command palette</span><span><kbd>Ctrl</kbd> <kbd>K</kbd></span>
-            <span>Ask Claude (in a query tab)</span><span><kbd>Ctrl</kbd> <kbd>I</kbd></span>
+            <span>AI assistant (in a query tab)</span><span><kbd>Ctrl</kbd> <kbd>I</kbd></span>
             <span>New / close tab</span><span><kbd>Ctrl</kbd> <kbd>T</kbd> / <kbd>Ctrl</kbd> <kbd>W</kbd></span>
             <span>Grid: edit / set NULL</span><span><kbd>Enter</kbd> / <kbd>Ctrl</kbd> <kbd>0</kbd></span>
             <span>Grid: copy with headers</span><span><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>C</kbd></span>
@@ -136,24 +174,38 @@ import { Icon } from '../ui/icon';
 })
 export class SettingsPanel {
   readonly st = inject(SettingsService);
-  readonly claude = inject(ClaudeService);
+  readonly ai = inject(AiService);
   readonly models = CLAUDE_MODELS;
+  readonly providers = PROVIDERS;
   readonly efforts = ['low', 'medium', 'high', 'xhigh'] as const;
-  readonly keyDraft = signal('');
-  readonly savingKey = signal(false);
-  readonly keyMsg = signal<{ text: string; bad: boolean } | null>(null);
+  readonly keyDrafts = signal<Record<AiProvider, string>>({ anthropic: '', openai: '' });
+  readonly savingKey = signal<AiProvider | null>(null);
+  readonly keyMsg = signal<{ provider: AiProvider; text: string; bad: boolean } | null>(null);
 
-  async saveKey() {
-    this.savingKey.set(true);
+  setDraft(p: AiProvider, v: string) {
+    this.keyDrafts.update((d) => ({ ...d, [p]: v }));
+  }
+
+  async saveKey(p: AiProvider) {
+    this.savingKey.set(p);
     this.keyMsg.set(null);
     try {
-      await this.claude.save(this.keyDraft().trim());
-      this.keyDraft.set('');
-      this.keyMsg.set({ text: 'Key verified and saved.', bad: false });
+      await this.ai.save(p, this.keyDrafts()[p].trim());
+      this.setDraft(p, '');
+      this.keyMsg.set({ provider: p, text: 'Key verified and saved.', bad: false });
     } catch (e) {
-      this.keyMsg.set({ text: errText(e), bad: true });
+      this.keyMsg.set({ provider: p, text: errText(e), bad: true });
     } finally {
-      this.savingKey.set(false);
+      this.savingKey.set(null);
+    }
+  }
+
+  async reloadModels() {
+    try {
+      await this.ai.reloadOpenAiModels();
+      this.keyMsg.set({ provider: 'openai', text: `${this.ai.openaiModels().length} models found.`, bad: false });
+    } catch (e) {
+      this.keyMsg.set({ provider: 'openai', text: errText(e), bad: true });
     }
   }
   readonly closed = output<void>();

@@ -12,6 +12,8 @@ interface Settings {
   claudeModel: string;
   claudeEffort: 'low' | 'medium' | 'high' | 'xhigh';
   claudeAllowQueries: boolean;
+  aiProvider: 'anthropic' | 'openai';
+  openaiModel: string;
 }
 
 const DEFAULTS: Settings = {
@@ -24,6 +26,8 @@ const DEFAULTS: Settings = {
   claudeModel: 'claude-opus-5-5',
   claudeEffort: 'high',
   claudeAllowQueries: false,
+  aiProvider: 'anthropic',
+  openaiModel: '',
 };
 
 function load(): Settings {

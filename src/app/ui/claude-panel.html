@@ -1,28 +1,42 @@
 <header class="head">
   <q-icon name="sparkle" [size]="15" class="spark" />
-  <strong>Claude</strong>
-  <select class="input sm model" [value]="settings.s().claudeModel" (change)="settings.patch({ claudeModel: $any($event.target).value })" title="Model">
-    @for (m of models; track m.id) {
-      <option [value]="m.id" [selected]="m.id === settings.s().claudeModel">{{ m.label }}</option>
+  <div class="seg prov">
+    @for (p of providers; track p.id) {
+      <button [class.on]="ai.provider() === p.id" (click)="setProvider(p.id)" [disabled]="running()">{{ p.label }}</button>
     }
-  </select>
+  </div>
+  @if (ai.provider() === 'anthropic') {
+    <select class="input sm model" [value]="ai.model()" (change)="setModel($any($event.target).value)" title="Model">
+      @for (m of models; track m.id) {
+        <option [value]="m.id" [selected]="m.id === ai.model()">{{ m.label }}</option>
+      }
+    </select>
+  } @else if (ai.openaiModels().length) {
+    <select class="input sm model" [value]="ai.model()" (change)="setModel($any($event.target).value)" title="Model (from your OpenAI account)">
+      @for (m of ai.openaiModels(); track m) {
+        <option [value]="m" [selected]="m === ai.model()">{{ m }}</option>
+      }
+    </select>
+  } @else if (ai.hasKey()) {
+    <input class="input sm model mono" placeholder="model id" [value]="ai.model()" (change)="setModel($any($event.target).value)" />
+  }
   <span class="grow"></span>
   <button class="btn ghost icon sm" (click)="newChat()" [disabled]="running() || !turns().length" title="New chat"><q-icon name="plus" /></button>
   <button class="btn ghost icon sm" (click)="closed.emit()" title="Close (Ctrl+I)"><q-icon name="x" /></button>
 </header>
 
-@if (claude.hasKey() === false) {
+@if (ai.hasKey() === false) {
   <div class="setup">
     <q-icon name="sparkle" [size]="28" class="spark" />
-    <h3>Connect Claude</h3>
+    <h3>Connect {{ ai.info().label }}</h3>
     <p class="muted">
-      Paste an Anthropic API key to let Claude write and explain SQL for this connection. The key is kept in Windows Credential Manager and only used from Quarry's
-      backend.
+      Paste {{ ai.provider() === 'openai' ? 'an OpenAI' : 'an Anthropic' }} API key so {{ ai.info().label }} can write and explain SQL for this connection. The key is
+      kept in Windows Credential Manager and only used from Quarry's backend.
     </p>
     <input
       class="input mono"
       type="password"
-      placeholder="sk-ant-…"
+      [placeholder]="ai.provider() === 'openai' ? 'sk-…' : 'sk-ant-…'"
       [value]="keyDraft()"
       (input)="keyDraft.set($any($event.target).value)"
       (keydown.enter)="saveKey()"
@@ -119,7 +133,7 @@
       <div class="welcome">
         <q-icon name="sparkle" [size]="26" class="spark" />
         <p>
-          Ask for a query, a migration, or an explanation. Claude can see the structure of
+          Ask for a query, a migration, or an explanation. {{ ai.info().label }} can see the structure of
           <strong>{{ schema() ?? 'your schemas' }}</strong> and, if you include it, what's in this editor.
         </p>
         <div class="sugg">
@@ -136,11 +150,11 @@
       <textarea
         #box
         rows="2"
-        placeholder="Ask Claude…  (Enter to send, Shift+Enter for a new line)"
+        [placeholder]="'Ask ' + ai.info().label + '…  (Enter to send, Shift+Enter for a new line)'"
         [value]="draft()"
         (input)="draft.set($any($event.target).value); autosize(box)"
         (keydown)="keydown($event)"
-        [disabled]="claude.hasKey() === null"
+        [disabled]="ai.hasKey() === null"
       ></textarea>
       @if (running()) {
         <button class="btn danger icon sm sendbtn" (click)="stop()" title="Stop"><q-icon name="stop" /></button>
@@ -150,20 +164,20 @@
     </div>
     <div class="opts">
       <label class="check"><input type="checkbox" [checked]="includeEditor()" (change)="includeEditor.set(!includeEditor())" />Include editor</label>
-      <label class="check" title="Lets Claude run SELECTs (max 50 rows, read-only transaction) to look at real data. Results are sent to Anthropic.">
+      <label class="check" [title]="'Lets the assistant run SELECTs (max 50 rows, read-only transaction) to look at real data. Results are sent to ' + ai.info().vendor + '.'">
         <input type="checkbox" [checked]="settings.s().claudeAllowQueries" (change)="settings.patch({ claudeAllowQueries: !settings.s().claudeAllowQueries })" />Allow
         read-only queries
       </label>
       <span class="grow"></span>
-      <select class="input sm effort" [value]="settings.s().claudeEffort" (change)="settings.patch({ claudeEffort: $any($event.target).value })" title="Effort: how hard Claude thinks">
+      <select class="input sm effort" [value]="settings.s().claudeEffort" (change)="settings.patch({ claudeEffort: $any($event.target).value })" title="Effort: how hard the model reasons">
         @for (e of ['low', 'medium', 'high', 'xhigh']; track e) {
           <option [value]="e" [selected]="e === settings.s().claudeEffort">{{ e }} effort</option>
         }
       </select>
     </div>
     <div class="privacy muted">
-      Sends schema structure{{ includeEditor() ? ', editor contents' : '' }}{{ settings.s().claudeAllowQueries ? ' and query results' : '' }} to Anthropic. Claude never runs
-      writes; you run its scripts.
+      Sends schema structure{{ includeEditor() ? ', editor contents' : '' }}{{ settings.s().claudeAllowQueries ? ' and query results' : '' }} to {{ ai.info().vendor }}. The
+      assistant never runs writes; you run its scripts.
     </div>
   </footer>
 }

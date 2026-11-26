@@ -21,9 +21,14 @@
   border-bottom: 1px solid var(--border);
   flex: none;
 }
+.prov button {
+  height: 24px;
+  font-size: 12px;
+  padding: 0 8px;
+}
 .model {
   width: auto;
-  max-width: 160px;
+  max-width: 150px;
   border-color: transparent;
   background: var(--panel-2);
 }

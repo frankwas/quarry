@@ -16,6 +16,7 @@ import { Icon } from '../ui/icon';
 import { SqlEditor, EditorCommand } from '../ui/sql-editor';
 import { ValueInspector } from '../ui/value-inspector';
 import { ClaudePanel, EditorContext } from '../ui/claude-panel';
+import { AiService } from '../core/claude.service';
 
 interface Panel {
   id: string;
@@ -47,6 +48,7 @@ export class QueryTab implements OnInit, OnDestroy {
   private dialog = inject(DialogService);
   private toast = inject(ToastService);
   readonly settings = inject(SettingsService);
+  readonly ai = inject(AiService);
 
   readonly session = input.required<OpenSession>();
   readonly tab = input.required<Extract<Tab, { kind: 'query' }>>();
